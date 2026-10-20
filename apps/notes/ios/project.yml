@@ -1,0 +1,30 @@
+name: Notes
+options:
+  bundleIdPrefix: dev.tailnet
+  deploymentTarget:
+    iOS: "18.0"
+packages:
+  NotesKit:
+    path: NotesKit
+targets:
+  Notes:
+    type: application
+    platform: iOS
+    sources: [Notes]
+    dependencies:
+      - package: NotesKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.tailnet.notes
+        TARGETED_DEVICE_FAMILY: "2"
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Notes
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+    info:
+      path: Notes/Info.plist
+      properties:
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
