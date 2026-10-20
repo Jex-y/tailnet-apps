@@ -8,6 +8,7 @@
     "@apps/flats": "workspace:*",
     "@apps/lifts": "workspace:*",
     "@apps/money": "workspace:*",
+    "@apps/notes": "workspace:*",
     "@apps/status": "workspace:*",
     "@apps/streets": "workspace:*",
     "@apps/tasks": "workspace:*"
