@@ -6,7 +6,7 @@ import { PageChanges } from "../contract";
 import { createNotesApp } from "../module";
 
 const context = createNotesTestContext();
-const request = startTestServer((ctx) => [createNotesApp(ctx, { now: () => NOW })], context);
+const request = startTestServer((ctx) => [createNotesApp(ctx, { reader: null, now: () => NOW })], context);
 const me = uniqueLogin();
 
 type NotebookWithPages = {

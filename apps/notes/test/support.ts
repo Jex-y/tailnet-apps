@@ -1,5 +1,6 @@
 import { beforeEach } from "bun:test";
 import { createTestContext } from "@apps/core/testing";
+import type { HandwritingReader, Reading } from "../src/api/handwriting";
 import type { Stroke } from "../src/contract";
 
 export const NOW = new Date("2026-10-19T20:00:00Z");
@@ -29,3 +30,21 @@ export const stroke = (fields: Partial<Stroke> = {}): Stroke => ({
 export const paragraph = (text: string) => ({ type: "paragraph", content: [{ type: "text", text }] });
 
 export const ink = (height = 300) => ({ type: "ink", attrs: { height } });
+
+/** A reader that answers `reading` for anything, remembering each request. */
+export const fakeReader = (reading: Reading = { latex: "x^{2}", text: "\\( x^{2} \\)", confidence: 0.9 }) => {
+  const requests: (readonly Stroke[])[] = [];
+  const reader: HandwritingReader = {
+    read: async (strokes) => {
+      requests.push(strokes);
+      return reading;
+    },
+  };
+  return { reader, requests };
+};
+
+/** The smallest valid PNG: one transparent pixel. */
+export const PIXEL_PNG = Uint8Array.from(
+  atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="),
+  (char) => char.charCodeAt(0),
+);

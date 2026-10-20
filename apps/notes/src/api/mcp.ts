@@ -1,15 +1,17 @@
-import { type AppMcp, HttpError, type McpServer, toolResult } from "@apps/core";
+import { type AppMcp, type CallToolResult, HttpError, type McpServer, toolResult } from "@apps/core";
 import { z } from "zod";
 import { appendTo, BlockInput } from "../blocks";
 import { Notebook, PageMeta } from "../contract";
 import { pageToMarkdown } from "../markdown";
-import type { NotesService, PageContent } from "./service";
+import type { InkDerivatives, NotesService, PageContent } from "./service";
 
 const INSTRUCTIONS = `The connected person's own maths notes: notebooks of pages.
 
 - A page mixes prose, typed LaTeX, TypeScript or JavaScript snippets and blocks of handwriting drawn with a pen.
-- get_page reads a page as Markdown: LaTeX in $…$ and $$…$$, snippets as fenced code, and each handwriting block as
-  an HTML comment naming it.
+- get_page reads a page as Markdown: LaTeX in $…$ and $$…$$ and snippets as fenced code. Each handwriting block is
+  an HTML comment naming it, followed by what Mathpix read from it, which may be wrong; the comment says when the
+  handwriting has changed since it was read, or was never read. With it come images of the handwriting as the
+  device drew it, each after a line naming its block: trust those over the reading.
 - append_to_page adds blocks to the end of a page, where the person sees them as soon as their device syncs. In a
   paragraph or heading, $…$ is inline LaTeX.
 - Ids are UUIDs; find notebooks and their pages with list_notebooks.`;
@@ -18,7 +20,17 @@ const NotebookId = z.uuid().describe("The notebook's id, from list_notebooks");
 const PageId = z.uuid().describe("The page's id, from list_notebooks");
 const Blocks = z.array(BlockInput).min(1).max(200).describe("Blocks in order");
 
-const inkPlaceholder = (blockId: string) => `<!-- handwriting ${blockId} -->`;
+const inkText =
+  (ink: ReadonlyMap<string, InkDerivatives>) =>
+  (blockId: string): string => {
+    const reading = ink.get(blockId)?.reading ?? null;
+    if (reading === null) {
+      return `<!-- handwriting ${blockId}, not read -->`;
+    }
+    const { latex, text } = reading.value;
+    const note = reading.current ? "read by Mathpix" : "read by Mathpix, and changed since";
+    return `<!-- handwriting ${blockId}, ${note} -->\n${latex === null ? text : `$$\n${latex}\n$$`}`;
+  };
 
 const notFound = (): never => {
   throw new HttpError(404, "Not found");
@@ -44,13 +56,34 @@ export const createNotesMcp = (service: NotesService): AppMcp => ({
       }));
     };
 
-    const markdownOf = ({ page, blocks }: PageContent) => ({
+    const markdownOf = ({ page, blocks, ink }: PageContent) => ({
       id: page.id,
       notebookId: page.notebookId,
       title: page.title,
       updatedAt: page.updatedAt,
-      markdown: pageToMarkdown(blocks, inkPlaceholder),
+      markdown: pageToMarkdown(blocks, inkText(ink)),
     });
+
+    const imageOf = async (pageId: string, blockId: string, current: boolean) => {
+      const png = await service.inkImage(owner, pageId, blockId);
+      return png === null
+        ? []
+        : ([
+            { type: "text", text: `Handwriting ${blockId}${current ? "" : " (changed since it was drawn here)"}:` },
+            { type: "image", data: Buffer.from(png).toString("base64"), mimeType: "image/png" },
+          ] as const);
+    };
+
+    /** The page as Markdown, then each rendered ink block as an image after a line naming it. */
+    const pageWithImages = async (pageId: string): Promise<CallToolResult> => {
+      const content = await service.content(owner, pageId);
+      const images = await Promise.all(
+        [...content.ink].flatMap(([blockId, { image }]) =>
+          image === null ? [] : [imageOf(pageId, blockId, image.current)],
+        ),
+      );
+      return { content: [{ type: "text", text: JSON.stringify(markdownOf(content)) }, ...images.flat()] };
+    };
 
     const markdownNow = async (pageId: string) => markdownOf(await service.content(owner, pageId));
 
@@ -72,8 +105,16 @@ export const createNotesMcp = (service: NotesService): AppMcp => ({
     );
     server.registerTool(
       "get_page",
-      { description: "Reads one page as Markdown.", inputSchema: { pageId: PageId }, annotations: read },
-      ({ pageId }) => toolResult(() => markdownNow(pageId)),
+      {
+        description: "Reads one page as Markdown, with images of its handwriting.",
+        inputSchema: { pageId: PageId },
+        annotations: read,
+      },
+      ({ pageId }) =>
+        toolResult(
+          () => pageWithImages(pageId),
+          (result) => result,
+        ),
     );
     server.registerTool(
       "create_notebook",

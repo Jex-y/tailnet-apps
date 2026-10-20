@@ -15,6 +15,11 @@ Everything is plain JSON in documented shapes (`src/contract.ts`, `src/document.
 - **Handwriting** is an `ink` block, which can only sit at the top of a page. Its strokes are rows of their own under
   the block's id, each a list of pen samples (position, time, pressure, tilt) in the block's coordinates, where every
   ink block is 1,000 units wide. A stroke never changes; erasing part of one erases it and draws what is left anew.
+- **Readings**: when Mathpix is configured, each ink block is read about five seconds after a burst of writing, and
+  the LaTeX kept with the change it was read at. A block written in since keeps its old reading, marked as such,
+  until it is read again.
+- **Images**: the device renders each ink block to PNG and uploads it, kept in the blob store at
+  `notes/ink/<page>/<block>.png`, so Claude can see the handwriting and not only what Mathpix made of it.
 
 ## Syncing
 
@@ -30,10 +35,14 @@ days, so a batch sent twice lands once. Two devices changing the same block leav
 | `GET /notes/api/notebooks`, `/pages`                | The notebooks, and every page's metadata and change number    |
 | `POST /notes/api/push`                              | A batch of changes in order, all or nothing, `Idempotency-Key` |
 | `GET /notes/api/pages/:id/changes?since=`           | Blocks and strokes changed after `since`, and the new number  |
+| `PUT /notes/api/pages/:id/blocks/:block/image?seq=` | A PNG of an ink block as of change `seq`                      |
+
+To read handwriting, set `MATHPIX_APP_ID` and `MATHPIX_APP_KEY` to an app's credentials from the
+[Mathpix console](https://console.mathpix.com).
 
 ## Read and write notes from Claude
 
-The notes tools (list notebooks, read a page as Markdown, create pages and append prose, LaTeX and snippets to them,
-move and delete pages) are on the stack's MCP server with every other app's, or alone at
-`https://apps.<tailnet>.ts.net/notes/mcp`. What Claude adds is a change like any device's, so a device sees it at its
-next sync.
+The notes tools (list notebooks, read a page as Markdown with images of its handwriting, create pages and append
+prose, LaTeX and snippets to them, move and delete pages) are on the stack's MCP server with every other app's, or
+alone at `https://apps.<tailnet>.ts.net/notes/mcp`. What Claude adds is a change like any device's, so it shows on
+the iPad at its next sync.

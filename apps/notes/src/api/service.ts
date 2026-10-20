@@ -1,25 +1,46 @@
-import { HttpError } from "@apps/core";
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { type BlobStore, HttpError } from "@apps/core";
+import { and, eq, inArray, isNotNull, lt, type SQL, sql } from "drizzle-orm";
 import type { Node } from "prosemirror-model";
 import type { Block, Mutation, Notebook, PageChanges, PageMeta, PageSummary, Stroke } from "../contract";
 import { parseBlockNode } from "../document";
 import type { NotesDb } from "./db";
-import { blocks, notebooks, pages, pushes, strokes } from "./schema";
+import { inkImageKey, readInkSeq } from "./ink";
+import { blocks, inkImages, notebooks, pages, pushes, readings, strokes } from "./schema";
 import { readBlockChanges, readNotebooks, readPage, readPages, readStrokeChanges } from "./views";
+import type { NotesWork } from "./work";
 
-export type NotesServiceDeps = { readonly db: NotesDb };
+export type NotesServiceDeps = {
+  readonly db: NotesDb;
+  readonly blob: BlobStore;
+  readonly work: Pick<NotesWork, "scheduleReading">;
+};
 
 type Tx = Parameters<Parameters<NotesDb["transaction"]>[0]>[0];
 
 /** A block still on its page, its node parsed. */
 export type PageBlock = { readonly id: string; readonly order: string; readonly node: Node };
 
+/** What was made of an ink block, and whether its strokes have changed since. */
+export type Derived<T> = { readonly value: T; readonly current: boolean };
+
+export type InkReading = { readonly latex: string | null; readonly text: string; readonly confidence: number };
+
+/** What there is of an ink block besides its strokes: what the reader made of it, and whether a device rendered it. */
+export type InkDerivatives = {
+  readonly reading: Derived<InkReading> | null;
+  readonly image: Derived<true> | null;
+};
+
 /** A page's content as it now is: its blocks in order, and the strokes of each ink block in the order drawn. */
 export type PageContent = {
   readonly page: PageSummary;
   readonly blocks: readonly PageBlock[];
   readonly strokes: ReadonlyMap<string, readonly Stroke[]>;
+  readonly ink: ReadonlyMap<string, InkDerivatives>;
 };
+
+/** A blob outliving the rows that named it, to delete once they are gone. */
+type Orphan = string;
 
 const notFound = (): never => {
   throw new HttpError(404, "Not found");
@@ -103,7 +124,7 @@ const deleteBlock = async (tx: Tx, owner: string, pageId: string, id: string) =>
   await tx.update(blocks).set({ node: null, seq }).where(live);
 };
 
-const addStroke = async (tx: Tx, owner: string, pageId: string, blockId: string, stroke: Stroke) => {
+const addStroke = async (tx: Tx, work: Work, owner: string, pageId: string, blockId: string, stroke: Stroke) => {
   await requireOwn(
     tx
       .select({ id: blocks.id })
@@ -120,9 +141,17 @@ const addStroke = async (tx: Tx, owner: string, pageId: string, blockId: string,
   }
   const seq = await nextSeq(tx, owner, pageId);
   await tx.insert(strokes).values({ pageId, blockId, id: stroke.id, stroke, seq });
+  await work.scheduleReading(tx, pageId, blockId);
 };
 
-const eraseStrokes = async (tx: Tx, owner: string, pageId: string, blockId: string, ids: readonly string[]) => {
+const eraseStrokes = async (
+  tx: Tx,
+  work: Work,
+  owner: string,
+  pageId: string,
+  blockId: string,
+  ids: readonly string[],
+) => {
   const live = and(
     eq(strokes.pageId, pageId),
     eq(strokes.blockId, blockId),
@@ -134,35 +163,60 @@ const eraseStrokes = async (tx: Tx, owner: string, pageId: string, blockId: stri
   }
   const seq = await nextSeq(tx, owner, pageId);
   await tx.update(strokes).set({ stroke: null, seq }).where(live);
+  await work.scheduleReading(tx, pageId, blockId);
 };
 
-const applyOne = async (tx: Tx, owner: string, mutation: Mutation): Promise<void> => {
+/** The rendered images of every ink block on the pages `where` picks, which deleting those pages leaves behind. */
+const imagesUnder = async (tx: Tx, owner: string, where: SQL): Promise<readonly Orphan[]> =>
+  (
+    await tx
+      .select({ pageId: inkImages.pageId, blockId: inkImages.blockId })
+      .from(inkImages)
+      .innerJoin(pages, eq(pages.id, inkImages.pageId))
+      .where(and(eq(pages.owner, owner), where))
+  ).map(({ pageId, blockId }) => inkImageKey(pageId, blockId));
+
+type Work = NotesServiceDeps["work"];
+
+const applyOne = async (tx: Tx, work: Work, owner: string, mutation: Mutation): Promise<readonly Orphan[]> => {
   switch (mutation.type) {
     case "notebook.put":
-      return putNotebook(tx, owner, mutation.row);
-    case "notebook.delete":
+      await putNotebook(tx, owner, mutation.row);
+      return [];
+    case "notebook.delete": {
+      const orphans = await imagesUnder(tx, owner, eq(pages.notebookId, mutation.id));
       await tx.delete(notebooks).where(and(eq(notebooks.id, mutation.id), eq(notebooks.owner, owner)));
-      return;
+      return orphans;
+    }
     case "page.put":
-      return putPage(tx, owner, mutation.row);
-    case "page.delete":
+      await putPage(tx, owner, mutation.row);
+      return [];
+    case "page.delete": {
+      const orphans = await imagesUnder(tx, owner, eq(pages.id, mutation.id));
       await tx.delete(pages).where(and(eq(pages.id, mutation.id), eq(pages.owner, owner)));
-      return;
+      return orphans;
+    }
     case "block.put":
-      return putBlock(tx, owner, mutation.pageId, mutation.row);
+      await putBlock(tx, owner, mutation.pageId, mutation.row);
+      return [];
     case "block.delete":
-      return deleteBlock(tx, owner, mutation.pageId, mutation.id);
+      await deleteBlock(tx, owner, mutation.pageId, mutation.id);
+      return [];
     case "stroke.add":
-      return addStroke(tx, owner, mutation.pageId, mutation.blockId, mutation.stroke);
+      await addStroke(tx, work, owner, mutation.pageId, mutation.blockId, mutation.stroke);
+      return [];
     case "stroke.erase":
-      return eraseStrokes(tx, owner, mutation.pageId, mutation.blockId, mutation.strokeIds);
+      await eraseStrokes(tx, work, owner, mutation.pageId, mutation.blockId, mutation.strokeIds);
+      return [];
   }
 };
 
-const applyAll = async (tx: Tx, owner: string, mutations: readonly Mutation[]) => {
+const applyAll = async (tx: Tx, work: Work, owner: string, mutations: readonly Mutation[]) => {
+  const orphans: Orphan[] = [];
   for (const mutation of mutations) {
-    await applyOne(tx, owner, mutation);
+    orphans.push(...(await applyOne(tx, work, owner, mutation)));
   }
+  return orphans;
 };
 
 /** A block's stored node; one that no longer parses is a bug here, never the client's. */
@@ -178,8 +232,36 @@ const storedNode = (id: string, json: unknown): Node => {
  * Everything someone can do with their notes, shared by the HTTP API and the MCP server. Refusals are
  * {@link HttpError}s saying why. Nobody can see or touch another's notes.
  */
-export const createNotesService = ({ db }: NotesServiceDeps) => {
+export const createNotesService = ({ db, blob, work }: NotesServiceDeps) => {
+  const forget = async (orphans: readonly Orphan[]) => {
+    await Promise.all(orphans.map((key) => blob.delete(key)));
+  };
+
   const page = async (owner: string, id: string): Promise<PageSummary> => (await readPage(db, owner, id)) ?? notFound();
+
+  const derivativesOf = async (pageId: string, blockId: string): Promise<InkDerivatives> => {
+    const [seq, [reading], [image]] = await Promise.all([
+      readInkSeq(db, pageId, blockId),
+      db
+        .select({ seq: readings.seq, latex: readings.latex, text: readings.text, confidence: readings.confidence })
+        .from(readings)
+        .where(and(eq(readings.pageId, pageId), eq(readings.blockId, blockId))),
+      db
+        .select({ seq: inkImages.seq })
+        .from(inkImages)
+        .where(and(eq(inkImages.pageId, pageId), eq(inkImages.blockId, blockId))),
+    ]);
+    return {
+      reading:
+        reading === undefined
+          ? null
+          : {
+              value: { latex: reading.latex, text: reading.text, confidence: reading.confidence },
+              current: reading.seq >= seq,
+            },
+      image: image === undefined ? null : { value: true, current: image.seq >= seq },
+    };
+  };
 
   /** The page's changes after `since`; the number is read first, so nothing up to it can be missing. */
   const changes = async (owner: string, pageId: string, since: number): Promise<PageChanges> => {
@@ -215,25 +297,66 @@ export const createNotesService = ({ db }: NotesServiceDeps) => {
           drawn.set(change.blockId, [...(drawn.get(change.blockId) ?? []), change.stroke]);
         }
       }
-      return { page: summary, blocks: live, strokes: drawn };
+      const inkBlocks = live.filter((block) => block.node.type.name === "ink");
+      const ink = new Map(
+        await Promise.all(inkBlocks.map(async ({ id }) => [id, await derivativesOf(pageId, id)] as const)),
+      );
+      return { page: summary, blocks: live, strokes: drawn, ink };
     },
 
     /** Applies the changes in order, all or nothing. */
-    apply: (owner: string, mutations: readonly Mutation[]): Promise<void> =>
-      db.transaction((tx) => applyAll(tx, owner, mutations)),
+    apply: async (owner: string, mutations: readonly Mutation[]): Promise<void> =>
+      forget(await db.transaction((tx) => applyAll(tx, work, owner, mutations))),
 
     /** {@link apply}, at most once per key: a push that was refused may be sent again, one that landed is ignored. */
-    push: (owner: string, key: string, mutations: readonly Mutation[]): Promise<void> =>
-      db.transaction(async (tx) => {
-        const claimed = await tx
-          .insert(pushes)
-          .values({ owner, key })
-          .onConflictDoNothing()
-          .returning({ key: pushes.key });
-        if (claimed.length > 0) {
-          await applyAll(tx, owner, mutations);
-        }
-      }),
+    push: async (owner: string, key: string, mutations: readonly Mutation[]): Promise<void> =>
+      forget(
+        await db.transaction(async (tx) => {
+          const claimed = await tx
+            .insert(pushes)
+            .values({ owner, key })
+            .onConflictDoNothing()
+            .returning({ key: pushes.key });
+          return claimed.length > 0 ? applyAll(tx, work, owner, mutations) : [];
+        }),
+      ),
+
+    /**
+     * Keeps a device's rendering of an ink block as of `seq`, unless one as late is already kept. The blob is written
+     * before its row, so a failure leaves at worst an image nothing names.
+     */
+    putInkImage: async (owner: string, pageId: string, blockId: string, seq: number, png: Blob): Promise<void> => {
+      const { seq: pageSeq } = await page(owner, pageId);
+      if (seq > pageSeq) {
+        throw new HttpError(400, `The page has only had ${pageSeq} changes`);
+      }
+      const [block] = await db
+        .select({ id: blocks.id })
+        .from(blocks)
+        .where(and(eq(blocks.pageId, pageId), eq(blocks.id, blockId), sql`${blocks.node}->>'type' = 'ink'`));
+      if (block === undefined) {
+        throw new HttpError(409, "That handwriting is no longer on the page");
+      }
+      await blob.write(inkImageKey(pageId, blockId), png, "image/png");
+      await db
+        .insert(inkImages)
+        .values({ pageId, blockId, seq })
+        .onConflictDoUpdate({
+          target: [inkImages.pageId, inkImages.blockId],
+          set: { seq, renderedAt: sql`now()` },
+          setWhere: lt(inkImages.seq, seq),
+        });
+    },
+
+    /** A device's rendering of an ink block, as PNG bytes; `null` when none has been kept. */
+    inkImage: async (owner: string, pageId: string, blockId: string): Promise<Uint8Array | null> => {
+      await page(owner, pageId);
+      const [image] = await db
+        .select({ seq: inkImages.seq })
+        .from(inkImages)
+        .where(and(eq(inkImages.pageId, pageId), eq(inkImages.blockId, blockId)));
+      return image === undefined ? null : blob.read(inkImageKey(pageId, blockId));
+    },
   };
 };
 

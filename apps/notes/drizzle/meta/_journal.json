@@ -8,6 +8,13 @@
       "when": 1792484033556,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792484065818,
+      "tag": "0001_read_handwriting",
+      "breakpoints": true
     }
   ]
 }

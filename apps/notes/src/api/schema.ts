@@ -2,6 +2,7 @@ import { jsonb } from "@apps/core/columns";
 import { sql } from "drizzle-orm";
 import {
   check,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -94,6 +95,49 @@ export const strokes = notesSchema.table(
     ),
     index().on(table.pageId, table.seq),
     index().on(table.pageId, table.blockId),
+  ],
+);
+
+const inkBlock = () => ({ pageId: uuid("page_id").notNull(), blockId: uuid("block_id").notNull() });
+
+/**
+ * What the handwriting reader made of an ink block once its strokes were as of `seq`, the last change to any of
+ * them. A block whose strokes changed after is read again, and keeps the old reading meanwhile.
+ */
+export const readings = notesSchema.table(
+  "readings",
+  {
+    ...inkBlock(),
+    seq: integer("seq").notNull(),
+    latex: text("latex"),
+    text: text("text").notNull(),
+    confidence: doublePrecision("confidence").notNull(),
+    readAt: instant("read_at").notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.pageId, table.blockId] }),
+    foreignKey({ columns: [table.pageId, table.blockId], foreignColumns: [blocks.pageId, blocks.id] }).onDelete(
+      "cascade",
+    ),
+  ],
+);
+
+/**
+ * An ink block as a device rendered it once its strokes were as of `seq`, at `ink/<page_id>/<block_id>.png` in the
+ * blob store.
+ */
+export const inkImages = notesSchema.table(
+  "ink_images",
+  {
+    ...inkBlock(),
+    seq: integer("seq").notNull(),
+    renderedAt: instant("rendered_at").notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.pageId, table.blockId] }),
+    foreignKey({ columns: [table.pageId, table.blockId], foreignColumns: [blocks.pageId, blocks.id] }).onDelete(
+      "cascade",
+    ),
   ],
 );
 

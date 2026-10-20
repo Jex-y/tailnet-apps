@@ -16,7 +16,7 @@ import { notesDb } from "./db";
 import { strokes } from "./schema";
 
 const context = createNotesTestContext();
-const request = startTestServer((ctx) => [createNotesApp(ctx, { now: () => NOW })], context);
+const request = startTestServer((ctx) => [createNotesApp(ctx, { reader: null, now: () => NOW })], context);
 const me = uniqueLogin();
 
 const push = (mutations: readonly MutationJson[], { as = me, key = crypto.randomUUID() } = {}) =>

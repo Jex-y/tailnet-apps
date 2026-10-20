@@ -115,6 +115,10 @@ export const Push = z.object({ mutations: z.array(Mutation).min(1).max(1000) });
 export const IDEMPOTENCY_HEADER = "Idempotency-Key";
 export const IdempotencyKey = z.string().min(1).max(200);
 
+/** A device's rendering of an ink block, as of the page change `seq`. */
+export const ImageQuery = z.object({ seq: z.coerce.number().int().min(1) });
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
 export const ChangesQuery = z.object({ since: z.coerce.number().int().min(0).default(0) });
 
 export const BlockChange = z.discriminatedUnion("kind", [
