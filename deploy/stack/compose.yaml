@@ -35,6 +35,8 @@ x-app-secrets-env: &app-secrets-env
   ENABLE_BANKING_PRIVATE_KEY: ${ENABLE_BANKING_PRIVATE_KEY:-}
   STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID:-}
   STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET:-}
+  MATHPIX_APP_ID: ${MATHPIX_APP_ID:-}
+  MATHPIX_APP_KEY: ${MATHPIX_APP_KEY:-}
 
 x-tailnet: &tailnet
   network_mode: service:tailscale

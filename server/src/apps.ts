@@ -5,6 +5,8 @@ import { createLiftsApp } from "@apps/lifts";
 import { liftsMigrations } from "@apps/lifts/migrations";
 import { createMoneyApp } from "@apps/money";
 import { moneyMigrations } from "@apps/money/migrations";
+import { createNotesApp } from "@apps/notes";
+import { notesMigrations } from "@apps/notes/migrations";
 import { createStatusApp, parseBuildInfo } from "@apps/status";
 import { createStreetsApp } from "@apps/streets";
 import { streetsMigrations } from "@apps/streets/migrations";
@@ -16,6 +18,7 @@ export const appMigrations: readonly AppMigrations[] = [
   flatsMigrations,
   liftsMigrations,
   moneyMigrations,
+  notesMigrations,
   streetsMigrations,
   tasksMigrations,
 ];
@@ -25,6 +28,7 @@ export const createApps = (context: AppContext): readonly AppModule[] => {
     createFlatsApp(context),
     createLiftsApp(context),
     createMoneyApp(context),
+    createNotesApp(context),
     createStreetsApp(context),
     createTasksApp(context),
   ];
