@@ -40,6 +40,23 @@ days, so a batch sent twice lands once. Two devices changing the same block leav
 To read handwriting, set `MATHPIX_APP_ID` and `MATHPIX_APP_KEY` to an app's credentials from the
 [Mathpix console](https://console.mathpix.com).
 
+## The iPad app
+
+`ios/` holds the editor, a SwiftUI and PencilKit app with no web counterpart. Its sync core is the `NotesKit` package,
+which builds and tests on a Mac:
+
+```sh
+swift test --package-path apps/notes/ios/NotesKit
+xcodegen generate --spec apps/notes/ios/project.yml   # then open apps/notes/ios/Notes.xcodeproj
+```
+
+The app applies every change at once, saves it with the queue of unsent batches, and sends them when it can; it works
+offline indefinitely. It asks for its server's address on first launch, and Tailscale on the iPad supplies the login.
+The Pencil draws and a finger scrolls; a double tap on the Pencil swaps to the eraser, which takes whole strokes.
+
+`NotesKit` makes order keys exactly as the server's `fractional-indexing` does, checked against cases printed by
+`scripts/fractional-index-vectors.ts`; rerun it into `FractionalIndexVectors.swift` after upgrading the package.
+
 ## Read and write notes from Claude
 
 The notes tools (list notebooks, read a page as Markdown with images of its handwriting, create pages and append
