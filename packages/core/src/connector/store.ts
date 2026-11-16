@@ -21,13 +21,15 @@ export type TokenOutcome =
   | { readonly kind: "issued"; readonly tokens: IssuedTokens }
   | { readonly kind: "invalid_grant" };
 
+type Grant = { readonly clientId: string; readonly login: string; readonly resource: string };
+
 export type ConnectorStore = ReturnType<typeof createConnectorStore>;
 
 export const createConnectorStore = (sql: SQL, now: () => Date = () => new Date()) => {
   const db = drizzle({ client: sql });
   const after = (ms: number) => new Date(now().getTime() + ms);
 
-  const issue = async (clientId: string, login: string): Promise<TokenOutcome> => {
+  const issue = async ({ clientId, login, resource }: Grant): Promise<TokenOutcome> => {
     const access = newSecret();
     const refresh = newSecret();
     await db.insert(tokens).values([
@@ -36,6 +38,7 @@ export const createConnectorStore = (sql: SQL, now: () => Date = () => new Date(
         kind: "access",
         clientId,
         login,
+        resource,
         expiresAt: after(ACCESS_TTL_MS),
       },
       {
@@ -43,6 +46,7 @@ export const createConnectorStore = (sql: SQL, now: () => Date = () => new Date(
         kind: "refresh",
         clientId,
         login,
+        resource,
         expiresAt: after(REFRESH_TTL_MS),
       },
     ]);
@@ -66,6 +70,7 @@ export const createConnectorStore = (sql: SQL, now: () => Date = () => new Date(
         clientId: request.client.id,
         redirectUri: request.redirectUri,
         codeChallenge: request.codeChallenge,
+        resource: request.endpoint.path,
         login: viewer.login,
         expiresAt: after(CODE_TTL_MS),
       });
@@ -84,7 +89,7 @@ export const createConnectorStore = (sql: SQL, now: () => Date = () => new Date(
             code.clientId === request.client_id &&
             code.redirectUri === request.redirect_uri &&
             verifiesChallenge(request.code_verifier, code.codeChallenge)
-            ? issue(code.clientId, code.login)
+            ? issue(code)
             : { kind: "invalid_grant" };
         }
         case "refresh_token": {
@@ -98,18 +103,24 @@ export const createConnectorStore = (sql: SQL, now: () => Date = () => new Date(
               ),
             )
             .returning();
-          return token !== undefined && token.clientId === request.client_id
-            ? issue(token.clientId, token.login)
-            : { kind: "invalid_grant" };
+          return token !== undefined && token.clientId === request.client_id ? issue(token) : { kind: "invalid_grant" };
         }
       }
     },
 
-    viewerFor: async (accessToken: string): Promise<Viewer | null> => {
+    /** Who `accessToken` acts as at the MCP path `resource`, if it was issued for that path. */
+    viewerFor: async (accessToken: string, resource: string): Promise<Viewer | null> => {
       const [token] = await db
         .select({ login: tokens.login })
         .from(tokens)
-        .where(and(eq(tokens.hash, hashSecret(accessToken)), eq(tokens.kind, "access"), gt(tokens.expiresAt, now())));
+        .where(
+          and(
+            eq(tokens.hash, hashSecret(accessToken)),
+            eq(tokens.kind, "access"),
+            eq(tokens.resource, resource),
+            gt(tokens.expiresAt, now()),
+          ),
+        );
       return token === undefined ? null : { login: token.login };
     },
   };

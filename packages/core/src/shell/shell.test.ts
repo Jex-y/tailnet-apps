@@ -24,7 +24,7 @@ const app = (slug: string, title: string, fields: Partial<AppModule> = {}): AppM
   routes: appRoutes({}),
   jobs: [],
   schedules: [],
-  mcp: { instructions: "", registerTools: () => {} },
+  mcp: { instructions: "", listing: "shared", registerTools: () => {} },
   ...fields,
 });
 

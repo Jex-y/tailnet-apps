@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { AppModule } from "../app-module";
 import { errorResponse } from "../http";
 import { type IdentityMode, resolveViewer, type Viewer } from "../identity";
-import { createMcpRoutes } from "../mcp";
+import { type AppMcp, createMcpRoutes, type McpEndpoint, mcpEndpoints } from "../mcp";
 import { SHELL_SLUG } from "../shell/contract";
 import {
   type AuthorizeRequest,
@@ -45,13 +45,22 @@ const page = (body: string, status = 200): Response =>
     },
   );
 
+const usesWhat = (endpoint: McpEndpoint): string => {
+  switch (endpoint.kind) {
+    case "combined":
+      return "every app's tools";
+    case "app":
+      return endpoint.app.title;
+  }
+};
+
 const consentPage = (request: AuthorizeRequest, params: Record<string, string>, viewer: Viewer): Response => {
   const hidden = Object.entries(params)
     .map(([key, value]) => `<input type="hidden" name="${escapeHtml(key)}" value="${escapeHtml(value)}">`)
     .join("");
   const destination = new URL(request.redirectUri).host;
   return page(
-    `<h1>Connect to your apps</h1><p><strong>${escapeHtml(destination)}</strong> will use every app's tools as <strong>${escapeHtml(viewer.login)}</strong>.</p><form method="post">${hidden}<button name="decision" value="allow">Allow</button><button name="decision" value="deny">Deny</button></form>`,
+    `<h1>Connect to your apps</h1><p><strong>${escapeHtml(destination)}</strong> will use ${escapeHtml(usesWhat(request.endpoint))} as <strong>${escapeHtml(viewer.login)}</strong>.</p><form method="post">${hidden}<button name="decision" value="allow">Allow</button><button name="decision" value="deny">Deny</button></form>`,
   );
 };
 
@@ -73,37 +82,48 @@ const invalidAuthorizeRequest = () => page("<h1>This connection request is inval
 
 export type AuthorizeOptions = {
   readonly identity: IdentityMode;
+  readonly apps: readonly { readonly slug: string; readonly title: string; readonly mcp: AppMcp }[];
   readonly publicUrl: string;
   readonly store: ConnectorStore;
 };
 
-export const createAuthorizeRoutes = ({ identity, publicUrl, store }: AuthorizeOptions) => ({
-  [AUTHORIZE_PATH]: {
-    GET: (request: Request) => {
-      const viewer = resolveViewer(identity, request);
-      const params = Object.fromEntries(new URL(request.url).searchParams);
-      const authorize = parseAuthorizeRequest(params);
-      return authorize === null ? invalidAuthorizeRequest() : consentPage(authorize, params, viewer);
+type MethodHandlers = Readonly<Record<string, (request: Request) => Response | Promise<Response>>>;
+
+export const createAuthorizeRoutes = ({
+  identity,
+  apps,
+  publicUrl,
+  store,
+}: AuthorizeOptions): Record<string, MethodHandlers> => {
+  const endpoints = mcpEndpoints(apps);
+  return {
+    [AUTHORIZE_PATH]: {
+      GET: (request: Request) => {
+        const viewer = resolveViewer(identity, request);
+        const params = Object.fromEntries(new URL(request.url).searchParams);
+        const authorize = parseAuthorizeRequest(params, endpoints);
+        return authorize === null ? invalidAuthorizeRequest() : consentPage(authorize, params, viewer);
+      },
+      POST: async (request: Request) => {
+        const viewer = resolveViewer(identity, request);
+        // Any page the viewer visits could otherwise post this form, approving a flow someone else started.
+        if (request.headers.get("Origin") !== new URL(publicUrl).origin) {
+          return page("<h1>Approve the connection from its own page</h1>", 403);
+        }
+        const { decision, ...params } = await formParams(request);
+        const authorize = parseAuthorizeRequest(params, endpoints);
+        if (authorize === null) {
+          return invalidAuthorizeRequest();
+        }
+        return decision === "allow"
+          ? redirectTo(authorize, {
+              code: await store.grantCode(authorize, viewer),
+            })
+          : redirectTo(authorize, { error: "access_denied" });
+      },
     },
-    POST: async (request: Request) => {
-      const viewer = resolveViewer(identity, request);
-      // Any page the viewer visits could otherwise post this form, approving a flow someone else started.
-      if (request.headers.get("Origin") !== new URL(publicUrl).origin) {
-        return page("<h1>Approve the connection from its own page</h1>", 403);
-      }
-      const { decision, ...params } = await formParams(request);
-      const authorize = parseAuthorizeRequest(params);
-      if (authorize === null) {
-        return invalidAuthorizeRequest();
-      }
-      return decision === "allow"
-        ? redirectTo(authorize, {
-            code: await store.grantCode(authorize, viewer),
-          })
-        : redirectTo(authorize, { error: "access_denied" });
-    },
-  },
-});
+  };
+};
 
 export type ConnectorServerOptions = {
   readonly port: number;
@@ -164,7 +184,7 @@ export const startConnectorServer = ({
 
   const authenticate = async (request: Request): Promise<Viewer | Response> => {
     const token = BearerToken.safeParse(request.headers.get("Authorization"));
-    const viewer = token.success ? await store.viewerFor(token.data) : null;
+    const viewer = token.success ? await store.viewerFor(token.data, new URL(request.url).pathname) : null;
     if (viewer !== null) {
       return viewer;
     }

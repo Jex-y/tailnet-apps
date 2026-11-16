@@ -37,7 +37,7 @@ export type ServerOptions = {
   readonly apps: readonly AppModule[];
   readonly shell: ShellOptions;
   /** The connector's approval page, when the connector is on. */
-  readonly authorize: Omit<AuthorizeOptions, "identity"> | null;
+  readonly authorize: Omit<AuthorizeOptions, "identity" | "apps"> | null;
 };
 
 export const startServer = ({ port, development, apps, shell, authorize }: ServerOptions): Bun.Server<undefined> =>
@@ -46,7 +46,7 @@ export const startServer = ({ port, development, apps, shell, authorize }: Serve
     development,
     routes: {
       ...createShellRoutes(apps, shell),
-      ...(authorize !== null && createAuthorizeRoutes({ identity: shell.identity, ...authorize })),
+      ...(authorize !== null && createAuthorizeRoutes({ identity: shell.identity, apps, ...authorize })),
       "/healthz": new Response("ok"),
       ...mergeAppRoutes(apps),
       ...createMcpRoutes(apps, async (request) => resolveViewer(shell.identity, request)),

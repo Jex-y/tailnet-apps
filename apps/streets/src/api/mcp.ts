@@ -168,5 +168,6 @@ const registerTools = (service: StreetsService, server: McpServer, login: string
 /** Acts on the connected person's own runs and progress only. */
 export const createStreetsMcp = (service: StreetsService): AppMcp => ({
   instructions: INSTRUCTIONS,
+  listing: "shared",
   registerTools: (server, viewer) => registerTools(service, server, viewer.login),
 });

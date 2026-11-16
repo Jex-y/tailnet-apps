@@ -41,6 +41,7 @@ const nextPosition = (rows: readonly { readonly position: number }[]) =>
 
 export const createNotesMcp = (service: NotesService): AppMcp => ({
   instructions: INSTRUCTIONS,
+  listing: "shared",
   registerTools: (server: McpServer, { login: owner }) => {
     const read = { readOnlyHint: true, openWorldHint: false } as const;
     const change = { readOnlyHint: false, destructiveHint: false, openWorldHint: false } as const;

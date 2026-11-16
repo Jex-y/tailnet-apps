@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { McpEndpoint } from "../mcp";
 
 /**
  * Where an approved client may be sent back to: Claude's own callbacks, and loopback for clients on the viewer's
@@ -53,17 +54,23 @@ const AuthorizeParams = z.object({
   code_challenge: z.string().min(43).max(128),
   code_challenge_method: z.literal("S256"),
   state: z.string().optional(),
+  /** RFC 8707: the MCP endpoint the token is for. Clients from before it was required send none, meaning `/mcp`. */
+  resource: z.url().optional(),
 });
 
-/** An authorization request whose redirect URI is one its client registered. */
+/** An authorization request whose redirect URI is one its client registered, for an endpoint that is served. */
 export type AuthorizeRequest = {
   readonly client: Client;
   readonly redirectUri: string;
   readonly codeChallenge: string;
   readonly state: string | undefined;
+  readonly endpoint: McpEndpoint;
 };
 
-export const parseAuthorizeRequest = (params: Record<string, string>): AuthorizeRequest | null => {
+export const parseAuthorizeRequest = (
+  params: Record<string, string>,
+  endpoints: readonly McpEndpoint[],
+): AuthorizeRequest | null => {
   const parsed = AuthorizeParams.safeParse(params);
   if (!parsed.success) {
     return null;
@@ -72,11 +79,17 @@ export const parseAuthorizeRequest = (params: Record<string, string>): Authorize
   if (client === null || !client.redirectUris.includes(parsed.data.redirect_uri)) {
     return null;
   }
+  const path = parsed.data.resource === undefined ? "/mcp" : new URL(parsed.data.resource).pathname;
+  const endpoint = endpoints.find((served) => served.path === path);
+  if (endpoint === undefined) {
+    return null;
+  }
   return {
     client,
     redirectUri: parsed.data.redirect_uri,
     codeChallenge: parsed.data.code_challenge,
     state: parsed.data.state,
+    endpoint,
   };
 };
 

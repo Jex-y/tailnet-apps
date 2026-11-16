@@ -316,5 +316,6 @@ const registerTools = (service: FlatsService, server: McpServer, login: string) 
 /** The hunt is shared, so every tailnet login sees the same properties; viewings record who added them. */
 export const createFlatsMcp = (service: FlatsService): AppMcp => ({
   instructions: INSTRUCTIONS,
+  listing: "shared",
   registerTools: (server, viewer) => registerTools(service, server, viewer.login),
 });

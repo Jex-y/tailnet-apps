@@ -56,6 +56,6 @@ its rows offline before moving them.
 ## Manage the log from Claude
 
 The lifts tools (read workouts, exercise histories, estimated maxes and rep records; log whole workouts or single
-sets; correct and delete them) are on the stack's MCP server with every other app's, or alone at
-`https://apps.<tailnet>.ts.net/lifts/mcp`. They act as the same Tailscale identity as the web app, and what they
+sets; correct and delete them) are served alone at `https://apps.<tailnet>.ts.net/lifts/mcp`, and to claude.ai
+through a connector of their own at `https://apps-mcp.<tailnet>.ts.net/lifts/mcp`, not with every other app's. They act as the same Tailscale identity as the web app, and what they
 change shows on a device the next time it syncs.

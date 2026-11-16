@@ -20,5 +20,6 @@ const INSTRUCTIONS = `The connected person's own strength training log.
 /** Acts on the connected person's own log only. */
 export const createLiftsMcp = (deps: LiftsMcpDeps): AppMcp => ({
   instructions: INSTRUCTIONS,
+  listing: "own",
   registerTools: (server, viewer) => registerLogTools(deps, server, viewer.login),
 });
