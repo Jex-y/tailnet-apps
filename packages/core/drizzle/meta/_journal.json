@@ -36,6 +36,13 @@
       "when": 1790890028651,
       "tag": "0004_save_themes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794835451491,
+      "tag": "0005_serve_connector",
+      "breakpoints": true
     }
   ]
 }

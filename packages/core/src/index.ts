@@ -2,6 +2,8 @@ export * from "./app-module";
 export * from "./blob";
 export * from "./columns";
 export * from "./config";
+export { startConnectorServer } from "./connector/routes";
+export { createConnectorStore } from "./connector/store";
 export * from "./database";
 export * from "./http";
 export * from "./identity";

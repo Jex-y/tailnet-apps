@@ -12,6 +12,7 @@ Garage share the sidecar's network and publish nothing on the host itself:
 - `https://apps.<tailnet>.ts.net/` is the server
 - `https://apps.<tailnet>.ts.net:3900` is S3 (Garage, region `garage`, path-style, bucket `apps`)
 - `psql -h apps.<tailnet>.ts.net -U <user> apps` is Postgres
+- `https://apps.<tailnet>.ts.net:8443/mcp` is the MCP connector, the one port funnelled to the internet
 
 Postgres and Garage keep their data in `$APP_DIR/data`, so back up that directory. On a Synology NAS, put `APP_DIR`
 inside a shared folder and Hyper Backup covers it.
@@ -28,6 +29,10 @@ inside a shared folder and Hyper Backup covers it.
 "acls": [
     {"action": "accept", "src": ["autogroup:member"], "dst": ["*:*"]},
     {"action": "accept", "src": ["tag:ci"], "dst": ["<host>:22"]},
+],
+// Funnels port 8443, the MCP connector for claude.ai, to the internet.
+"nodeAttrs": [
+    {"target": ["tag:apps"], "attr": ["funnel"]},
 ],
 ```
 
