@@ -46,8 +46,7 @@ x-tailnet: &tailnet
 
 services:
   # The stack's only way in. Every other service shares its network namespace and publish no host ports,
-  # so Tailscale-User-Login can only have been set by tailscale serve. Port 8443 alone is funnelled to the
-  # internet, and reaches only the server's connector listener, which ignores that header.
+  # so Tailscale-User-Login can only have been set by tailscale serve.
   tailscale:
     image: tailscale/tailscale:v1.102.4
     hostname: apps
@@ -65,6 +64,34 @@ services:
       - ./serve.json:/stack/serve.json:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9002/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+
+  # A second device, `apps-mcp`, funnelling its port 443 to the internet: claude.ai only connects to 443, and
+  # funnelling the `apps` device's 443 would publish every app. It reaches only the server's connector listener,
+  # which ignores Tailscale-User-Login. Two tailscaleds share this network namespace, so both must run in
+  # userspace (the image's default) and listen on different local and WireGuard ports.
+  tailscale-mcp:
+    <<: *tailnet
+    image: tailscale/tailscale:v1.102.4
+    hostname: apps-mcp
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY: ${TS_MCP_AUTHKEY:-}
+      TS_AUTH_ONCE: "true"
+      TS_EXTRA_ARGS: --advertise-tags=tag:apps
+      TS_TAILSCALED_EXTRA_ARGS: --port=0
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /stack/serve-mcp.json
+      TS_ENABLE_HEALTH_CHECK: "true"
+      TS_LOCAL_ADDR_PORT: 127.0.0.1:9003
+    volumes:
+      - tailscale-mcp-state:/var/lib/tailscale
+      - ./serve-mcp.json:/stack/serve-mcp.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9003/healthz"]
       interval: 10s
       timeout: 3s
       retries: 6
@@ -110,13 +137,15 @@ services:
     depends_on:
       tailscale:
         condition: service_healthy
+      tailscale-mcp:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       garage:
         condition: service_started
     environment:
       <<: [*runtime-env, *database-env, *blob-env, *notify-env, *app-secrets-env]
-      CONNECTOR_URL: https://${PUBLIC_HOST:?}:8443
+      CONNECTOR_URL: https://${MCP_HOST:?}
       CONNECTOR_PORT: "3002"
     mem_limit: 256m
     healthcheck:
@@ -162,3 +191,4 @@ services:
 
 volumes:
   tailscale-state:
+  tailscale-mcp-state:

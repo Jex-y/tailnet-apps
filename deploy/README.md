@@ -12,7 +12,8 @@ Garage share the sidecar's network and publish nothing on the host itself:
 - `https://apps.<tailnet>.ts.net/` is the server
 - `https://apps.<tailnet>.ts.net:3900` is S3 (Garage, region `garage`, path-style, bucket `apps`)
 - `psql -h apps.<tailnet>.ts.net -U <user> apps` is Postgres
-- `https://apps.<tailnet>.ts.net:8443/mcp` is the MCP connector, the one port funnelled to the internet
+- `https://apps-mcp.<tailnet>.ts.net/mcp` is the MCP connector, on its own device, `apps-mcp`, the only one funnelled
+  to the internet
 
 Postgres and Garage keep their data in `$APP_DIR/data`, so back up that directory. On a Synology NAS, put `APP_DIR`
 inside a shared folder and Hyper Backup covers it.
@@ -30,15 +31,15 @@ inside a shared folder and Hyper Backup covers it.
     {"action": "accept", "src": ["autogroup:member"], "dst": ["*:*"]},
     {"action": "accept", "src": ["tag:ci"], "dst": ["<host>:22"]},
 ],
-// Funnels port 8443, the MCP connector for claude.ai, to the internet.
+// Lets `apps-mcp`, the MCP connector for claude.ai, be funnelled to the internet.
 "nodeAttrs": [
     {"target": ["tag:apps"], "attr": ["funnel"]},
 ],
 ```
 
 - An OAuth client with the Auth Keys write scope for `tag:ci`, for CI.
-- A one-off auth key for the sidecar: not reusable, not ephemeral, pre-approved, tagged `tag:apps`. It is only
-  used on first start; the sidecar keeps its identity in the `tailscale-state` volume after that.
+- Two one-off auth keys, for the `apps` and `apps-mcp` sidecars: not reusable, not ephemeral, pre-approved, tagged
+  `tag:apps`. Each is only used on first start; the sidecars keep their identities in their state volumes after that.
 
 **Deploy host**, any Linux machine on the tailnet with Docker Compose:
 

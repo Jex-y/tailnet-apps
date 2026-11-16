@@ -41,6 +41,7 @@ jobs:
           APP_IMAGE: ci
           APP_TAG: ${{ github.sha }}
           PUBLIC_HOST: apps.example.ts.net
+          MCP_HOST: apps-mcp.example.ts.net
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           GARAGE_RPC_SECRET: ci
@@ -51,7 +52,7 @@ jobs:
           VAPID_SUBJECT: mailto:ci@example.com
         run: |
           docker compose -f deploy/stack/compose.yaml config --quiet
-          jq empty deploy/stack/serve.json
+          jq empty deploy/stack/serve.json deploy/stack/serve-mcp.json
 
   image:
     runs-on: ubuntu-latest
