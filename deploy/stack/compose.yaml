@@ -76,10 +76,11 @@ services:
   tailscale-mcp:
     <<: *tailnet
     image: tailscale/tailscale:v1.102.4
-    hostname: apps-mcp
     restart: unless-stopped
     environment:
       TS_AUTHKEY: ${TS_MCP_AUTHKEY:-}
+      # Not `hostname`, which Docker refuses alongside another service's network namespace.
+      TS_HOSTNAME: apps-mcp
       TS_AUTH_ONCE: "true"
       TS_EXTRA_ARGS: --advertise-tags=tag:apps
       TS_TAILSCALED_EXTRA_ARGS: --port=0
