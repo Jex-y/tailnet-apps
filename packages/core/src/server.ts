@@ -1,5 +1,7 @@
 import { type AppModule, routePaths, serveRoutes } from "./app-module";
+import { type AuthorizeOptions, createAuthorizeRoutes } from "./connector/routes";
 import { errorResponse } from "./http";
+import { resolveViewer } from "./identity";
 import { createMcpRoutes } from "./mcp";
 import { appShellPath, SHELL_SLUG } from "./shell/contract";
 import { createShellRoutes, type ShellOptions } from "./shell/routes";
@@ -34,17 +36,20 @@ export type ServerOptions = {
   readonly development: boolean;
   readonly apps: readonly AppModule[];
   readonly shell: ShellOptions;
+  /** The connector's approval page, when the connector is on. */
+  readonly authorize: Omit<AuthorizeOptions, "identity"> | null;
 };
 
-export const startServer = ({ port, development, apps, shell }: ServerOptions): Bun.Server<undefined> =>
+export const startServer = ({ port, development, apps, shell, authorize }: ServerOptions): Bun.Server<undefined> =>
   Bun.serve({
     port,
     development,
     routes: {
       ...createShellRoutes(apps, shell),
+      ...(authorize !== null && createAuthorizeRoutes({ identity: shell.identity, ...authorize })),
       "/healthz": new Response("ok"),
       ...mergeAppRoutes(apps),
-      ...createMcpRoutes(apps, shell.identity),
+      ...createMcpRoutes(apps, async (request) => resolveViewer(shell.identity, request)),
     },
     fetch: () => Response.json({ error: "Not found" }, { status: 404 }),
     error: errorResponse,

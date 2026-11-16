@@ -42,6 +42,7 @@ const server = startServer({
   development: false,
   apps: [app("flats", "Flat hunt"), app("tasks", "Tasks"), app("lifts", "Lifts", { offlinePage: builtPage })],
   shell,
+  authorize: null,
 });
 afterAll(() => server.stop(true));
 
@@ -167,7 +168,8 @@ describe("shell", () => {
   });
 
   test("an app cannot take the shell's slug, or routes under its own shell path", () => {
-    const start = (taken: AppModule) => () => startServer({ port: 0, development: false, apps: [taken], shell });
+    const start = (taken: AppModule) => () =>
+      startServer({ port: 0, development: false, apps: [taken], shell, authorize: null });
     expect(start(app("shell", "Shell"))).toThrow(/reserved/);
     expect(start(app("pet", "Pet", { routes: appRoutes({ "/pet/shell/settings": new Response("mine") }) }))).toThrow(
       /reserved/,

@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { HttpError } from "./http";
-import { type IdentityMode, resolveViewer, type Viewer } from "./identity";
+import type { Viewer } from "./identity";
 
 export type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 export type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -44,13 +44,12 @@ const instructionsOf = (apps: readonly McpApp[]): string => {
 };
 
 /**
- * Serves `apps`' tools over MCP Streamable HTTP, statelessly: each request gets its own server and transport, and
- * answers with plain JSON, so nothing is held between requests and any server instance can answer.
+ * Serves `apps`' tools over MCP Streamable HTTP to `viewer`, statelessly: each request gets its own server and
+ * transport, and answers with plain JSON, so nothing is held between requests and any server instance can answer.
  */
-export const mcpHandler = (name: string, apps: readonly McpApp[], identity: IdentityMode) => {
+const mcpHandler = (name: string, apps: readonly McpApp[]) => {
   const instructions = instructionsOf(apps);
-  return async (request: Request): Promise<Response> => {
-    const viewer = resolveViewer(identity, request);
+  return async (request: Request, viewer: Viewer): Promise<Response> => {
     const server = new McpServer({ name, version: "1.0.0" }, { instructions });
     for (const app of apps) {
       app.mcp.registerTools(server, viewer);
@@ -61,10 +60,17 @@ export const mcpHandler = (name: string, apps: readonly McpApp[], identity: Iden
   };
 };
 
-/** `/mcp` for every app together, and `/<slug>/mcp` for each alone. */
-export const createMcpRoutes = (apps: readonly McpApp[], identity: IdentityMode) => {
+/** `/mcp` for every app together, and `/<slug>/mcp` for each alone, each acting as whoever `authenticate` finds. */
+export const createMcpRoutes = (
+  apps: readonly McpApp[],
+  authenticate: (request: Request) => Promise<Viewer | Response>,
+) => {
   const route = (name: string, served: readonly McpApp[]) => {
-    const handle = mcpHandler(name, served, identity);
+    const serve = mcpHandler(name, served);
+    const handle = async (request: Request): Promise<Response> => {
+      const viewer = await authenticate(request);
+      return viewer instanceof Response ? viewer : serve(request, viewer);
+    };
     return { GET: handle, POST: handle, DELETE: handle };
   };
   return Object.fromEntries([

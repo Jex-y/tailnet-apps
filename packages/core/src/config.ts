@@ -20,10 +20,21 @@ export type RuntimeConfig = {
   readonly notify: NotifyConfig;
 };
 
+/** Whether the apps' tools are also served to the internet, for Claude's own servers, behind OAuth. */
+export type ConnectorConfig =
+  | { readonly kind: "off" }
+  | {
+      readonly kind: "on";
+      readonly port: number;
+      /** Where the internet reaches the connector, e.g. through Tailscale Funnel. */
+      readonly url: string;
+    };
+
 export type ServerConfig = RuntimeConfig & {
   readonly port: number;
   readonly development: boolean;
   readonly identity: IdentityMode;
+  readonly connector: ConnectorConfig;
 };
 
 export type WorkerConfig = RuntimeConfig & {
@@ -46,6 +57,8 @@ const ServerEnv = z
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     PORT: z.coerce.number().int().positive().default(3000),
     DEV_USER: z.string().min(1).optional(),
+    CONNECTOR_URL: z.url().optional(),
+    CONNECTOR_PORT: z.coerce.number().int().positive().default(3002),
   })
   .refine((env) => env.DEV_USER === undefined || env.NODE_ENV === "development", {
     message: "DEV_USER is only allowed when NODE_ENV=development",
@@ -95,6 +108,10 @@ export const parseServerConfig = (env: Env): ServerConfig => {
     development: server.NODE_ENV === "development",
     identity:
       server.DEV_USER === undefined ? { kind: "tailscale" } : { kind: "fixed", viewer: { login: server.DEV_USER } },
+    connector:
+      server.CONNECTOR_URL === undefined
+        ? { kind: "off" }
+        : { kind: "on", port: server.CONNECTOR_PORT, url: server.CONNECTOR_URL.replace(/\/$/, "") },
   };
 };
 

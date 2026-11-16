@@ -46,7 +46,8 @@ x-tailnet: &tailnet
 
 services:
   # The stack's only way in. Every other service shares its network namespace and publish no host ports,
-  # so Tailscale-User-Login can only have been set by tailscale serve.
+  # so Tailscale-User-Login can only have been set by tailscale serve. Port 8443 alone is funnelled to the
+  # internet, and reaches only the server's connector listener, which ignores that header.
   tailscale:
     image: tailscale/tailscale:v1.102.4
     hostname: apps
@@ -115,6 +116,8 @@ services:
         condition: service_started
     environment:
       <<: [*runtime-env, *database-env, *blob-env, *notify-env, *app-secrets-env]
+      CONNECTOR_URL: https://${PUBLIC_HOST:?}:8443
+      CONNECTOR_PORT: "3002"
     mem_limit: 256m
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]

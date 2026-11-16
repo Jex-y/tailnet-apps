@@ -38,8 +38,13 @@ on a tailnet device, e.g. Claude Code:
 claude mcp add --transport http --scope user apps https://apps.<tailnet>.ts.net/mcp
 ```
 
-Clients that connect from the cloud rather than your device, such as claude.ai's custom connectors, cannot reach the
-tailnet.
+Clients that connect from the cloud rather than your device, such as claude.ai's custom connectors and the Claude
+apps that use them, cannot reach the tailnet. For those, the server also serves the same tools to the internet at
+`https://apps.<tailnet>.ts.net:8443/mcp`, through [Tailscale Funnel](https://tailscale.com/kb/1223/funnel), behind
+OAuth. Add that URL as a custom connector in claude.ai (Settings → Connectors) and leave the client ID and secret
+empty. Connecting opens an approval page on the tailnet, so the device you connect from must be on it; once approved,
+Claude acts as your Tailscale login, from anywhere. Only Claude's own callbacks and loopback addresses can receive an
+approval.
 
 ## Develop
 
