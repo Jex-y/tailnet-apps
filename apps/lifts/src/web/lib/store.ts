@@ -51,7 +51,7 @@ const ROWS = {
 type CollectionName = keyof typeof ROWS;
 
 /** Bumped whenever a row's shape changes, so a device drops the rows it kept and loads them again. */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /** The longest the first screen waits for rows it expects before showing whatever has arrived. */
 const RESTORE_WAIT_MS = 1500;

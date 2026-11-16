@@ -55,8 +55,13 @@ const call = async <T = object>(client: Client, name: string, args: Record<strin
   return JSON.parse(result.text) as T;
 };
 
-const createExercise = async (client: Client, name: string, lift: string | null = null) => {
-  const exercises = await call<ExerciseSummary[]>(client, "create_exercise", { name, lift });
+const createExercise = async (
+  client: Client,
+  name: string,
+  lift: string | null = null,
+  style: { measure?: string; bodyweight?: boolean } = {},
+) => {
+  const exercises = await call<ExerciseSummary[]>(client, "create_exercise", { name, lift, ...style });
   const created = exercises.find((exercise) => exercise.name === name);
   if (created === undefined) {
     throw new Error(`${name} was not created`);
@@ -198,7 +203,14 @@ describe("lifts mcp", () => {
     ]);
 
     expect(await call<History>(client, "get_exercise_history", { exerciseId: deadlift, limit: 1 })).toEqual({
-      exercise: { id: deadlift, name: "Deadlift", lift: "deadlift", weightStepKg: 2.5 },
+      exercise: {
+        id: deadlift,
+        name: "Deadlift",
+        lift: "deadlift",
+        weightStepKg: 2.5,
+        measure: "reps",
+        bodyweight: false,
+      },
       bestEstimatedMax: { maxKg: 221.9, from: "180×5 @8", date: "2026-09-24" },
       repRecords: [
         { reps: 1, weightKg: 200, date: "2026-10-01" },
@@ -235,6 +247,114 @@ describe("lifts mcp", () => {
     });
     expect((await callTool(client, "update_exercise", { exerciseId: squat, lift: null })).isError).toBe(false);
     expect((await callTool(client, "create_exercise", { name: "Low bar", lift: "squat" })).isError).toBe(false);
+  });
+
+  test("counts bodyweight into the load of a bodyweight exercise, and seconds for a timed one", async () => {
+    const client = await connect();
+    const pullUp = await createExercise(client, "Pull-up", null, { bodyweight: true });
+    const plank = await createExercise(client, "Plank", null, { measure: "seconds" });
+
+    const first = await call<FullWorkout>(client, "log_workout", {
+      date: "2026-10-01",
+      bodyweightKg: 80,
+      exercises: [
+        {
+          exerciseId: pullUp,
+          sets: [
+            { weightKg: 20, reps: 5, rpe: 10 },
+            { weightKg: 0, reps: 8 },
+          ],
+        },
+        { exerciseId: plank, sets: [{ weightKg: 20, seconds: 60 }] },
+      ],
+    });
+    expect(first.tonnageKg).toBe(1140);
+    expect(first.exercises.map((entry) => entry.sets)).toEqual([
+      [
+        expect.objectContaining({ weightKg: 20, loadKg: 100, reps: 5, estimatedMaxKg: 115.9 }),
+        expect.objectContaining({ weightKg: 0, loadKg: 80, reps: 8 }),
+      ],
+      [expect.not.objectContaining({ estimatedMaxKg: expect.anything() })],
+    ]);
+    expect(first.exercises[1]?.sets[0]).toEqual(expect.objectContaining({ weightKg: 20, seconds: 60 }));
+
+    // Without a bodyweight of its own, a workout takes the latest logged.
+    await call(client, "log_workout", {
+      date: "2026-10-08",
+      exercises: [{ exerciseId: pullUp, sets: [{ weightKg: 25, reps: 5, rpe: 10 }] }],
+    });
+    const history = await call<History>(client, "get_exercise_history", { exerciseId: pullUp });
+    expect(history.bestEstimatedMax).toEqual({ maxKg: 121.7, from: "BW+25×5 @10", date: "2026-10-08" });
+    expect(history.repRecords).toEqual([
+      { reps: 5, weightKg: 25, loadKg: 105, date: "2026-10-08" },
+      { reps: 8, weightKg: 0, loadKg: 80, date: "2026-10-01" },
+    ]);
+    expect(await call<object[]>(client, "list_workouts", { limit: 1, before: "2026-10-02" })).toEqual([
+      expect.objectContaining({
+        exercises: [
+          { name: "Pull-up", sets: ["BW+20×5 @10", "BW×8"] },
+          { name: "Plank", sets: ["20×60s"] },
+        ],
+      }),
+    ]);
+
+    const plankEntry = first.exercises[1]?.entryId;
+    expect(await callTool(client, "log_set", { entryId: plankEntry, weightKg: 20, reps: 5 })).toEqual({
+      isError: true,
+      text: '"Plank" is counted in seconds, not reps',
+    });
+    expect(await callTool(client, "log_set", { entryId: plankEntry, weightKg: 20 })).toEqual({
+      isError: true,
+      text: "Give either reps or seconds, not both",
+    });
+    expect(await callTool(client, "update_exercise", { exerciseId: plank, measure: "reps" })).toEqual({
+      isError: true,
+      text: '"Plank" has been logged or programmed, so it cannot be counted in reps',
+    });
+    expect((await callTool(client, "update_exercise", { exerciseId: pullUp, bodyweight: false })).isError).toBe(false);
+  });
+
+  test("works out a bodyweight exercise's load as what to add to bodyweight, and prescribes time", async () => {
+    const client = await connect();
+    const pullUp = await createExercise(client, "Pull-up", null, { bodyweight: true });
+    const plank = await createExercise(client, "Plank", null, { measure: "seconds" });
+    await call(client, "log_workout", { date: "2026-09-30", bodyweightKg: 80 });
+
+    const program = await call<FullProgram>(client, "create_program", {
+      name: "Upper",
+      trainingMaxes: [{ exerciseId: pullUp, kg: 120 }],
+      days: [
+        {
+          week: 1,
+          name: "Pull",
+          exercises: [
+            {
+              exerciseId: pullUp,
+              prescriptions: [
+                { sets: 3, reps: 5, load: { kind: "percent", percent: 80 } },
+                { sets: 1, reps: 5, load: { kind: "percent", percent: 50 } },
+                { sets: 1, reps: 8, load: { kind: "kg", kg: 5 } },
+              ],
+            },
+            { exerciseId: plank, prescriptions: [{ sets: 3, seconds: 45, load: { kind: "kg", kg: 20 } }] },
+          ],
+        },
+      ],
+    });
+    expect(prescribed(program)).toEqual([
+      {
+        week: 1,
+        days: [["Pull-up 3×5 80% → 15", "Pull-up 1×5 50% → 0", "Pull-up 1×8 BW+5 kg → 5", "Plank 3×45s 20 kg → 20"]],
+      },
+    ]);
+    expect(
+      await callTool(client, "put_program_day", {
+        programId: program.id,
+        week: 2,
+        name: "Hold",
+        exercises: [{ exerciseId: plank, prescriptions: [{ reps: 5, load: { kind: "kg", kg: 20 } }] }],
+      }),
+    ).toEqual({ isError: true, text: '"Plank" is counted in seconds, not reps' });
   });
 
   test("writes a program whose loads come to weights today, and steps a week from it", async () => {

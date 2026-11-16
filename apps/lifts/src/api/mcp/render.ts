@@ -1,5 +1,14 @@
-import type { LiftSet, Prescription, ScheduledSession } from "../../contract";
-import { type EntryDetail, type Log, sessionsOf, type WorkoutDetail, workoutDetails } from "../../log";
+import type { Exercise, Prescription, ScheduledSession } from "../../contract";
+import {
+  bodyweightOn,
+  describeSet,
+  type EntryDetail,
+  type Log,
+  type LoggedSet,
+  sessionsOf,
+  type WorkoutDetail,
+  workoutDetails,
+} from "../../log";
 import {
   loadText,
   type ProgramDayDetail,
@@ -12,10 +21,13 @@ import { bestEstimate, estimatedMax, isWorkSet, tonnage } from "../../strength";
 import { maxOn } from "../../trend";
 import { round } from "./inputs";
 
-export const setText = (set: LiftSet) =>
-  `${set.weightKg}×${set.reps}${set.rpe === null ? "" : ` @${set.rpe}`}${isWorkSet(set) ? "" : " (warm-up)"}`;
+export const setText = (set: LoggedSet, exercise: Exercise) =>
+  `${describeSet(set, exercise)}${isWorkSet(set) ? "" : " (warm-up)"}`;
 
-export const maxOf = (sets: readonly LiftSet[]) => {
+/** How an exercise is logged, for Claude to log it the same way. */
+export const briefExercise = ({ id, name, measure, bodyweight }: Exercise) => ({ id, name, measure, bodyweight });
+
+export const maxOf = (sets: readonly LoggedSet[]) => {
   const best = bestEstimate(sets);
   return best === null ? null : round(best.maxKg);
 };
@@ -26,19 +38,23 @@ export const briefWorkout = (workout: WorkoutDetail) => ({
   finished: workout.finishedAt !== null,
   ...(workout.bodyweightKg !== null && { bodyweightKg: workout.bodyweightKg }),
   ...(workout.notes !== "" && { notes: workout.notes }),
-  exercises: workout.entries.map((entry) => ({ name: entry.exercise.name, sets: entry.sets.map(setText) })),
+  exercises: workout.entries.map((entry) => ({
+    name: entry.exercise.name,
+    sets: entry.sets.map((set) => setText(set, entry.exercise)),
+  })),
 });
 
 export const fullEntry = (entry: EntryDetail) => ({
   entryId: entry.id,
-  exercise: { id: entry.exercise.id, name: entry.exercise.name },
+  exercise: briefExercise(entry.exercise),
   ...(entry.notes !== "" && { notes: entry.notes }),
   sets: entry.sets.map((set) => {
     const maxKg = isWorkSet(set) ? estimatedMax(set) : null;
     return {
       setId: set.id,
       weightKg: set.weightKg,
-      reps: set.reps,
+      ...(entry.exercise.bodyweight && set.loadKg !== null && { loadKg: set.loadKg }),
+      ...(set.reps === null ? { seconds: set.seconds } : { reps: set.reps }),
       rpe: set.rpe,
       kind: set.kind,
       ...(maxKg !== null && { estimatedMaxKg: round(maxKg) }),
@@ -69,15 +85,20 @@ export const exerciseSummaries = (log: Log) => {
   });
 };
 
-/** Each exercise's estimated max on `date`, for loads worked out from it. */
-export const maxesOn = (log: Log, date: string): ReadonlyMap<string, number> => {
+/** What loads are worked out from on a day: each exercise's estimated max, and the bodyweight. */
+export type DayBasis = { readonly maxes: ReadonlyMap<string, number>; readonly bodyweightKg: number | null };
+
+export const basisOn = (log: Log, date: string): DayBasis => {
   const workouts = workoutDetails(log);
-  return new Map(
-    log.exercises.flatMap((exercise) => {
-      const maxKg = maxOn(sessionsOf(workouts, exercise.id), date);
-      return maxKg === null ? [] : [[exercise.id, maxKg] as const];
-    }),
-  );
+  return {
+    maxes: new Map(
+      log.exercises.flatMap((exercise) => {
+        const maxKg = maxOn(sessionsOf(workouts, exercise.id), date);
+        return maxKg === null ? [] : [[exercise.id, maxKg] as const];
+      }),
+    ),
+    bodyweightKg: bodyweightOn(log.workouts, date),
+  };
 };
 
 const weeksOf = (program: ProgramDetail) => Map.groupBy(program.days, (day) => day.week);
@@ -97,39 +118,43 @@ export const briefProgram = (program: ProgramDetail, sessions: readonly Schedule
   };
 };
 
-const fullPrescription = (prescription: Prescription, kg: number | null) => ({
-  prescriptionId: prescription.id,
-  sets: prescription.sets,
-  reps: prescription.reps,
-  kind: prescription.kind,
-  load: prescription.load,
-  text: `${prescription.sets}×${prescription.reps} ${loadText(prescription.load)}${prescription.kind === "warmup" ? " (warm-up)" : ""}`,
-  ...(kg !== null && { kgToday: kg }),
-});
+const fullPrescription = (prescription: Prescription, exercise: Exercise, kg: number | null) => {
+  const { sets, reps, seconds, load, kind } = prescription;
+  return {
+    prescriptionId: prescription.id,
+    sets,
+    ...(reps === null ? { seconds } : { reps }),
+    kind,
+    load,
+    text: `${sets}×${reps ?? `${seconds}s`} ${loadText(load, exercise)}${kind === "warmup" ? " (warm-up)" : ""}`,
+    ...(kg !== null && { kgToday: kg }),
+  };
+};
 
-const fullSlot = (program: ProgramDetail, maxes: ReadonlyMap<string, number>) => (slot: ProgramExerciseDetail) => {
+const fullSlot = (program: ProgramDetail, day: DayBasis) => (slot: ProgramExerciseDetail) => {
   const basis = {
     trainingMaxKg: program.trainingMaxes.find((max) => max.exerciseId === slot.exerciseId)?.kg ?? null,
-    maxKg: maxes.get(slot.exerciseId) ?? null,
+    maxKg: day.maxes.get(slot.exerciseId) ?? null,
     weightStepKg: slot.exercise.weightStepKg,
+    bodyweightKg: slot.exercise.bodyweight ? day.bodyweightKg : 0,
   };
   return {
     programExerciseId: slot.id,
-    exercise: { id: slot.exercise.id, name: slot.exercise.name },
+    exercise: briefExercise(slot.exercise),
     ...(slot.notes !== "" && { notes: slot.notes }),
     prescriptions: slot.prescriptions.map((prescription) =>
-      fullPrescription(prescription, resolveLoad(prescription.load, prescription.reps, basis)),
+      fullPrescription(prescription, slot.exercise, resolveLoad(prescription.load, prescription.reps, basis)),
     ),
   };
 };
 
-const fullDay = (program: ProgramDetail, maxes: ReadonlyMap<string, number>) => (day: ProgramDayDetail) => ({
+const fullDay = (program: ProgramDetail, basis: DayBasis) => (day: ProgramDayDetail) => ({
   dayId: day.id,
   name: day.name,
-  exercises: day.exercises.map(fullSlot(program, maxes)),
+  exercises: day.exercises.map(fullSlot(program, basis)),
 });
 
-export const fullProgram = (program: ProgramDetail, maxes: ReadonlyMap<string, number>) => {
+export const fullProgram = (program: ProgramDetail, basis: DayBasis) => {
   const nameOf = new Map(
     program.days.flatMap((day) => day.exercises.map((slot) => [slot.exerciseId, slot.exercise.name] as const)),
   );
@@ -142,7 +167,7 @@ export const fullProgram = (program: ProgramDetail, maxes: ReadonlyMap<string, n
       ...(nameOf.has(max.exerciseId) && { name: nameOf.get(max.exerciseId) }),
       kg: max.kg,
     })),
-    weeks: [...weeksOf(program)].map(([week, days]) => ({ week, days: days.map(fullDay(program, maxes)) })),
+    weeks: [...weeksOf(program)].map(([week, days]) => ({ week, days: days.map(fullDay(program, basis)) })),
   };
 };
 
@@ -150,7 +175,7 @@ export const scheduledSession = (
   session: ScheduledSession,
   program: ProgramDetail,
   status: SessionStatus,
-  maxes: ReadonlyMap<string, number>,
+  basis: DayBasis,
 ) => {
   const day = program.days.find((other) => other.id === session.programDayId);
   return {
@@ -162,6 +187,6 @@ export const scheduledSession = (
     day: day?.name,
     ...(session.state === "logged"
       ? { workoutId: session.workoutId }
-      : day !== undefined && { exercises: day.exercises.map(fullSlot(program, maxes)) }),
+      : day !== undefined && { exercises: day.exercises.map(fullSlot(program, basis)) }),
   };
 };

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   date,
   foreignKey,
@@ -13,7 +14,14 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { COMPETITION_LIFTS, DEFAULT_WEIGHT_STEP_KG, LOAD_KINDS, SESSION_STATES, SET_KINDS } from "../contract";
+import {
+  COMPETITION_LIFTS,
+  DEFAULT_WEIGHT_STEP_KG,
+  LOAD_KINDS,
+  MEASURES,
+  SESSION_STATES,
+  SET_KINDS,
+} from "../contract";
 
 export const liftsSchema = pgSchema("lifts");
 
@@ -21,6 +29,7 @@ export const competitionLift = liftsSchema.enum("competition_lift", COMPETITION_
 export const setKind = liftsSchema.enum("set_kind", SET_KINDS);
 export const loadKind = liftsSchema.enum("load_kind", LOAD_KINDS);
 export const sessionState = liftsSchema.enum("session_state", SESSION_STATES);
+export const measure = liftsSchema.enum("measure", MEASURES);
 
 const instant = (name: string) => timestamp(name, { withTimezone: true });
 const kilograms = (name: string) => numeric(name, { precision: 6, scale: 2, mode: "number" });
@@ -43,6 +52,8 @@ export const exercises = liftsSchema.table(
     weightStepKg: numeric("weight_step_kg", { precision: 4, scale: 2, mode: "number" })
       .notNull()
       .default(DEFAULT_WEIGHT_STEP_KG),
+    measure: measure("measure").notNull().default("reps"),
+    bodyweight: boolean("bodyweight").notNull().default(false),
     createdAt: instant("created_at").notNull().defaultNow(),
   },
   (table) => [
@@ -92,7 +103,8 @@ export const sets = liftsSchema.table(
     entryId: uuid("entry_id").notNull(),
     position: integer("position").notNull(),
     weightKg: kilograms("weight_kg").notNull(),
-    reps: integer("reps").notNull(),
+    reps: integer("reps"),
+    seconds: integer("seconds"),
     rpe: numeric("rpe", { precision: 3, scale: 1, mode: "number" }),
     kind: setKind("kind").notNull(),
     loggedAt: instant("logged_at").notNull(),
@@ -104,6 +116,8 @@ export const sets = liftsSchema.table(
     index().on(table.owner, table.entryId),
     check("weight_not_negative", sql`${table.weightKg} >= 0`),
     check("reps_not_negative", sql`${table.reps} >= 0`),
+    check("seconds_not_negative", sql`${table.seconds} >= 0`),
+    check("counted_in_one", sql`(${table.reps} is null) <> (${table.seconds} is null)`),
     check("rpe_in_half_steps", sql`${table.rpe} between 1 and 10 and ${table.rpe} * 2 = trunc(${table.rpe} * 2)`),
   ],
 );
@@ -185,7 +199,8 @@ export const prescriptions = liftsSchema.table(
     programExerciseId: uuid("program_exercise_id").notNull(),
     position: integer("position").notNull(),
     sets: integer("sets").notNull(),
-    reps: integer("reps").notNull(),
+    reps: integer("reps"),
+    seconds: integer("seconds"),
     loadKind: loadKind("load_kind").notNull(),
     loadKg: kilograms("load_kg"),
     loadPercent: numeric("load_percent", { precision: 4, scale: 1, mode: "number" }),
@@ -200,6 +215,8 @@ export const prescriptions = liftsSchema.table(
     index().on(table.owner, table.programExerciseId),
     check("sets_positive", sql`${table.sets} >= 1`),
     check("reps_positive", sql`${table.reps} >= 1`),
+    check("seconds_positive", sql`${table.seconds} >= 1`),
+    check("counted_in_one", sql`(${table.reps} is null) <> (${table.seconds} is null)`),
     check(
       "load_matches_kind",
       sql`(${table.loadKg} is not null)::int + (${table.loadPercent} is not null)::int + (${table.loadRpe} is not null)::int = 1

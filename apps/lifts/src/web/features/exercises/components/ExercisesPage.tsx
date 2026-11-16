@@ -4,8 +4,9 @@ import { COMPETITION_LIFTS, type CompetitionLift, type Exercise } from "../../..
 import type { WorkoutDetail } from "../../../../log";
 import { formatDay, formatKg } from "../../../utils/format";
 import { useExerciseActions } from "../api/exercises";
-import { LIFT_NAMES, missingLifts, summarise } from "../utils/lifts";
+import { DEFAULT_STYLE, LIFT_NAMES, missingLifts, type Style, summarise } from "../utils/lifts";
 import { StrengthOverview } from "./StrengthOverview";
+import { StyleSelect } from "./StyleSelect";
 
 type Props = {
   readonly exercises: readonly Exercise[];
@@ -18,15 +19,17 @@ export const ExercisesPage = ({ exercises, workouts }: Props) => {
   const actions = useExerciseActions();
   const [name, setName] = useState("");
   const [lift, setLift] = useState<CompetitionLift | "">("");
+  const [style, setStyle] = useState<Style>(DEFAULT_STYLE);
 
   const summaries = summarise(exercises.toSorted(byName), workouts);
   const free = missingLifts(exercises);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    actions.create(name.trim(), lift === "" ? null : lift);
+    actions.create(name.trim(), lift === "" ? null : lift, style);
     setName("");
     setLift("");
+    setStyle(DEFAULT_STYLE);
   };
 
   return (
@@ -81,6 +84,7 @@ export const ExercisesPage = ({ exercises, workouts }: Props) => {
             ))}
           </select>
         )}
+        <StyleSelect value={style} onChange={setStyle} />
         <button type="submit" disabled={name.trim() === ""}>
           Add
         </button>

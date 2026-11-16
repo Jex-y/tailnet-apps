@@ -2,15 +2,16 @@ import { describe, expect, test } from "bun:test";
 import type { LiftSet } from "./contract";
 import { bestEstimate, estimatedMax, isRecord, repRecords, tonnage } from "./strength";
 
-type Shorthand = Pick<LiftSet, "weightKg" | "reps" | "rpe" | "kind">;
+type Shorthand = { loadKg: number | null } & Pick<LiftSet, "reps" | "rpe" | "kind">;
 
-const work = (weightKg: number, reps: number, rpe: number | null = null): Shorthand => ({
-  weightKg,
+const work = (loadKg: number, reps: number, rpe: number | null = null): Shorthand => ({
+  loadKg,
   reps,
   rpe,
   kind: "work",
 });
-const warmup = (weightKg: number, reps: number): Shorthand => ({ weightKg, reps, rpe: null, kind: "warmup" });
+const warmup = (loadKg: number, reps: number): Shorthand => ({ loadKg, reps, rpe: null, kind: "warmup" });
+const timed: Shorthand = { loadKg: 40, reps: null, rpe: null, kind: "work" };
 
 describe("estimatedMax", () => {
   test("follows the RPE chart, in whole and half steps", () => {
@@ -30,6 +31,11 @@ describe("estimatedMax", () => {
     expect(estimatedMax(work(60, 17))).toBeNull();
     expect(estimatedMax(work(60, 12, 5))).toBeNull();
     expect(estimatedMax(work(60, 16))).toBeCloseTo(60 / 0.572, 5);
+  });
+
+  test("says nothing of a timed set, or of one whose load is not known", () => {
+    expect(estimatedMax(timed)).toBeNull();
+    expect(estimatedMax({ ...work(0, 5), loadKg: null })).toBeNull();
   });
 });
 
@@ -54,18 +60,26 @@ describe("repRecords", () => {
       work(90, 6),
     ]);
 
-    expect(records.map(({ reps, set }) => [reps, set.weightKg])).toEqual([
+    expect(records.map(({ reps, loadKg }) => [reps, loadKg])).toEqual([
       [1, 120],
       [3, 110],
       [5, 100],
       [8, 90],
     ]);
   });
+
+  test("leaves out timed sets and sets of unknown load", () => {
+    expect(repRecords([timed, { ...work(0, 5), loadKg: null }])).toEqual([]);
+  });
 });
 
 describe("tonnage", () => {
   test("adds up the work sets", () => {
     expect(tonnage([warmup(60, 5), work(100, 5), work(102.5, 4)])).toBe(910);
+  });
+
+  test("leaves out timed sets and sets of unknown load", () => {
+    expect(tonnage([work(100, 5), timed, { ...work(0, 5), loadKg: null }])).toBe(500);
   });
 });
 

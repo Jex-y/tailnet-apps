@@ -17,6 +17,12 @@ const Position = z.number().int().min(0).max(10_000);
 const Notes = z.string().max(10_000);
 const Kilograms = z.number().min(0).max(1000).multipleOf(0.01);
 
+/** Zero records a missed attempt. */
+export const Reps = z.number().int().min(0).max(100);
+
+/** A timed set's length; zero records a missed attempt, as zero reps does. */
+export const Seconds = z.number().int().min(0).max(3600);
+
 export const Rpe = z.number().min(1).max(10).multipleOf(0.5);
 
 /** What a prescribed weight is rounded down to: the smallest jump the plates on hand allow. */
@@ -25,11 +31,25 @@ export const DEFAULT_WEIGHT_STEP_KG = 2.5;
 
 const Name = z.string().trim().min(1).max(100);
 
+/** What a set of an exercise counts: repetitions, or seconds held or carried. */
+export const MEASURES = ["reps", "seconds"] as const;
+export type Measure = (typeof MEASURES)[number];
+
 export const Exercise = z.object({
   id: Id,
   name: Name,
   lift: z.enum(COMPETITION_LIFTS).nullable(),
   weightStepKg: WeightStep,
+  /**
+   * Fixed once the exercise is logged or programmed, since its sets and prescriptions count in it. The defaults here
+   * and on sets let a device's changes queued before timed and bodyweight exercises still land.
+   */
+  measure: z.enum(MEASURES).default("reps"),
+  /**
+   * Whether the lifter's bodyweight is part of the load, as in a pull-up. A set's weight is then what is added to it,
+   * and its load the two together, from the bodyweight logged with the workout or the nearest one logged.
+   */
+  bodyweight: z.boolean().default(false),
 });
 export type Exercise = z.infer<typeof Exercise>;
 
@@ -44,6 +64,11 @@ export const Workout = z.object({
 });
 export type Workout = z.infer<typeof Workout>;
 
+/** Exactly one of a set's or prescription's counts is given: the one its exercise's {@link Measure} names. */
+const countedInOne = ({ reps, seconds }: { reps: number | null; seconds: number | null }) =>
+  (reps === null) !== (seconds === null);
+const COUNTED_IN_ONE = { message: "Give either reps or seconds, not both" };
+
 /** One exercise as performed in one workout, holding its sets. */
 export const Entry = z.object({
   id: Id,
@@ -55,19 +80,24 @@ export const Entry = z.object({
 });
 export type Entry = z.infer<typeof Entry>;
 
-export const LiftSet = z.object({
-  id: Id,
-  entryId: Id,
-  /** Order within the entry; ties fall back to id. */
-  position: Position,
-  weightKg: Kilograms,
-  /** Zero records a missed attempt. */
-  reps: z.number().int().min(0).max(100),
-  rpe: Rpe.nullable(),
-  kind: z.enum(SET_KINDS),
-  /** When the set was written down, which for a backfilled session is not when it was lifted. */
-  loggedAt: Instant,
-});
+export const LiftSet = z
+  .object({
+    id: Id,
+    entryId: Id,
+    /** Order within the entry; ties fall back to id. */
+    position: Position,
+    /** On top of bodyweight, for an exercise whose load includes it. */
+    weightKg: Kilograms,
+    /** `null` for a timed exercise. */
+    reps: Reps.nullable(),
+    /** `null` for an exercise counted in reps. */
+    seconds: Seconds.nullable().default(null),
+    rpe: Rpe.nullable(),
+    kind: z.enum(SET_KINDS),
+    /** When the set was written down, which for a backfilled session is not when it was lifted. */
+    loggedAt: Instant,
+  })
+  .refine(countedInOne, COUNTED_IN_ONE);
 export type LiftSet = z.infer<typeof LiftSet>;
 
 /** A block of training: weeks of days, each day exercises, each exercise its prescriptions. */
@@ -111,17 +141,22 @@ export const Load = z.discriminatedUnion("kind", [
 ]);
 export type Load = z.infer<typeof Load>;
 
-/** Sets of the same reps and load, such as 4×5 at 77.5%. */
-export const Prescription = z.object({
-  id: Id,
-  programExerciseId: Id,
-  /** Order within the exercise; ties fall back to id. */
-  position: Position,
-  sets: z.number().int().min(1).max(20),
-  reps: z.number().int().min(1).max(30),
-  load: Load,
-  kind: z.enum(SET_KINDS),
-});
+/** Sets of the same reps (or seconds) and load, such as 4×5 at 77.5%. */
+export const Prescription = z
+  .object({
+    id: Id,
+    programExerciseId: Id,
+    /** Order within the exercise; ties fall back to id. */
+    position: Position,
+    sets: z.number().int().min(1).max(20),
+    /** `null` for a timed exercise. */
+    reps: z.number().int().min(1).max(30).nullable(),
+    /** `null` for an exercise counted in reps. */
+    seconds: Seconds.min(1).nullable(),
+    load: Load,
+    kind: z.enum(SET_KINDS),
+  })
+  .refine(countedInOne, COUNTED_IN_ONE);
 export type Prescription = z.infer<typeof Prescription>;
 
 export const SESSION_STATES = ["planned", "skipped", "logged"] as const;

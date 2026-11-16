@@ -6,7 +6,7 @@ import { type ProgramDetail, programDetails, roundDown } from "../../program";
 import { addDays, movedSessions, scheduleDates, sessionStatus, WEEKDAYS } from "../../schedule";
 import type { LiftsMcpDeps } from "./index";
 import { change, destroy, edit, notFound, ProgramId, read, SessionId, TrainingMaxInput } from "./inputs";
-import { maxesOn, scheduledSession } from "./render";
+import { basisOn, scheduledSession } from "./render";
 
 const LocalDate = z.iso.date();
 
@@ -27,13 +27,13 @@ export const registerScheduleTools = ({ service, now }: LiftsMcpDeps, server: Mc
   const scheduleBetween = async (from: string, to: string) => {
     const { plan, log, programs } = await state();
     const workoutOf = new Map(workoutDetails(log).map((workout) => [workout.id, workout]));
-    const maxes = maxesOn(log, today());
+    const basis = basisOn(log, today());
     return plan.sessions
       .filter((session) => session.date >= from && session.date <= to)
       .map((session) => {
         const program = programOfDay(programs, session.programDayId);
         const workout = session.state === "logged" ? workoutOf.get(session.workoutId) : undefined;
-        return scheduledSession(session, program, sessionStatus(session, workout, today()), maxes);
+        return scheduledSession(session, program, sessionStatus(session, workout, today()), basis);
       });
   };
 
@@ -70,7 +70,7 @@ export const registerScheduleTools = ({ service, now }: LiftsMcpDeps, server: Mc
         if (dating.kind === "too_few_weekdays") {
           throw new HttpError(400, `A week of this program has ${dating.needed} days, so it needs that many weekdays`);
         }
-        const maxes = maxesOn(log, today());
+        const { maxes } = basisOn(log, today());
         const covered = new Set([
           ...program.trainingMaxes.map((max) => max.exerciseId),
           ...trainingMaxes.map((max) => max.exerciseId),

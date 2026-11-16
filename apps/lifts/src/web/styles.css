@@ -906,6 +906,11 @@ button.choice.create {
   color: var(--fg);
 }
 
+.create-choice {
+  display: grid;
+  gap: 0.4rem;
+}
+
 /* Past sessions */
 
 .workouts {

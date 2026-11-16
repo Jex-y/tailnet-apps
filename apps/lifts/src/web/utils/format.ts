@@ -1,4 +1,5 @@
-import type { LiftSet } from "../../contract";
+import type { Exercise, LiftSet } from "../../contract";
+import { describeSet, describeWeight } from "../../log";
 
 const dayParts = new Intl.DateTimeFormat("en-GB", {
   weekday: "short",
@@ -22,8 +23,14 @@ export const formatDay = (date: string, today = localToday()): string => {
 /** To the nearest tenth, without a trailing zero, thousands marked. */
 export const formatKg = (kg: number): string => kg.toLocaleString("en-GB", { maximumFractionDigits: 1 });
 
-export const formatSet = (set: Pick<LiftSet, "weightKg" | "reps" | "rpe">): string =>
-  `${formatKg(set.weightKg)}×${set.reps}${set.rpe === null ? "" : ` @${set.rpe}`}`;
+type Loading = Pick<Exercise, "bodyweight">;
+
+/** A set's weight: kilograms, or `BW+20` for an exercise whose load includes bodyweight. */
+export const formatWeight = (weightKg: number, exercise: Loading): string =>
+  describeWeight(weightKg, exercise, formatKg);
+
+export const formatSet = (set: Pick<LiftSet, "weightKg" | "reps" | "seconds" | "rpe">, exercise: Loading): string =>
+  describeSet(set, exercise, formatKg);
 
 /** A signed change to one decimal, with a true minus sign. */
 export const formatChange = (kg: number): string => `${kg < 0 ? "−" : "+"}${Math.abs(kg).toFixed(1)}`;

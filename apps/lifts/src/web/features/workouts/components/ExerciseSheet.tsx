@@ -4,7 +4,8 @@ import type { WorkoutDetail } from "../../../../log";
 import { Icon } from "../../../components/Icon";
 import { formatDay } from "../../../utils/format";
 import { useExerciseActions } from "../../exercises/api/exercises";
-import { LIFT_NAMES, missingLifts, summarise } from "../../exercises/utils/lifts";
+import { StyleSelect } from "../../exercises/components/StyleSelect";
+import { DEFAULT_STYLE, LIFT_NAMES, missingLifts, type Style, summarise } from "../../exercises/utils/lifts";
 
 type Props = {
   readonly exercises: readonly Exercise[];
@@ -21,6 +22,7 @@ export const ExerciseSheet = ({ exercises, workouts, onPick, onClose }: Props) =
   const create = useExerciseActions().create;
   const dialog = useRef<HTMLDialogElement>(null);
   const [query, setQuery] = useState("");
+  const [style, setStyle] = useState<Style>(DEFAULT_STYLE);
 
   useEffect(() => {
     dialog.current?.showModal();
@@ -38,7 +40,7 @@ export const ExerciseSheet = ({ exercises, workouts, onPick, onClose }: Props) =
     event.preventDefault();
     const [only] = recentFirst;
     if (wanted !== "" && !exact) {
-      onPick(create(query.trim()));
+      onPick(create(query.trim(), null, style));
     } else if (only !== undefined && recentFirst.length === 1) {
       onPick(only.exercise.id);
     }
@@ -62,11 +64,12 @@ export const ExerciseSheet = ({ exercises, workouts, onPick, onClose }: Props) =
         </header>
         <ul className="choices">
           {wanted !== "" && !exact && (
-            <li>
+            <li className="create-choice">
               <button type="submit" className="choice create">
                 <span>Create “{query.trim()}”</span>
                 <Icon name="plus" />
               </button>
+              <StyleSelect value={style} onChange={setStyle} />
             </li>
           )}
           {recentFirst.map(({ exercise, lastTrainedOn }) => (

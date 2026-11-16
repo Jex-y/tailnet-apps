@@ -30,7 +30,14 @@ export type LiftsReader = Pick<LiftsDb, "select">;
 
 export const readExercises = (db: LiftsReader, owner: string): Promise<Exercise[]> =>
   db
-    .select({ id: exercises.id, name: exercises.name, lift: exercises.lift, weightStepKg: exercises.weightStepKg })
+    .select({
+      id: exercises.id,
+      name: exercises.name,
+      lift: exercises.lift,
+      weightStepKg: exercises.weightStepKg,
+      measure: exercises.measure,
+      bodyweight: exercises.bodyweight,
+    })
     .from(exercises)
     .where(eq(exercises.owner, owner))
     .orderBy(asc(exercises.name), asc(exercises.id));
@@ -71,6 +78,7 @@ export const readSets = async (db: LiftsReader, owner: string): Promise<LiftSet[
       position: sets.position,
       weightKg: sets.weightKg,
       reps: sets.reps,
+      seconds: sets.seconds,
       rpe: sets.rpe,
       kind: sets.kind,
       loggedAt: sets.loggedAt,
@@ -160,6 +168,7 @@ export const readPrescriptions = async (db: LiftsReader, owner: string): Promise
       position: prescriptions.position,
       sets: prescriptions.sets,
       reps: prescriptions.reps,
+      seconds: prescriptions.seconds,
       kind: prescriptions.kind,
       loadKind: prescriptions.loadKind,
       loadKg: prescriptions.loadKg,

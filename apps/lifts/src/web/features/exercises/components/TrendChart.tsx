@@ -1,4 +1,5 @@
 import { type PointerEvent, useState } from "react";
+import type { Exercise } from "../../../../contract";
 import type { Trend } from "../../../../trend";
 import { formatChange, formatDay, formatKg, formatSet } from "../../../utils/format";
 import { useElementWidth } from "../hooks/useElementWidth";
@@ -10,6 +11,8 @@ const STEPS = 40;
 
 type Props = {
   readonly trend: Trend;
+  /** What its sets are, for writing them out. */
+  readonly exercise: Pick<Exercise, "bodyweight">;
   /** How far back the axis reaches, in weeks; `null` to start at the first session. */
   readonly weeks: number | null;
   /** A sparkline: no axes, no residuals, no reading out. */
@@ -22,7 +25,7 @@ type Props = {
  * whether a straight line suits the data: they should scatter evenly about zero. Pointing at a session reads it out;
  * a slider under the chart does the same from the keyboard.
  */
-export const TrendChart = ({ trend, weeks, compact = false }: Props) => {
+export const TrendChart = ({ trend, exercise, weeks, compact = false }: Props) => {
   const { ref, width } = useElementWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
   const { points, fit } = trend;
@@ -177,7 +180,7 @@ export const TrendChart = ({ trend, weeks, compact = false }: Props) => {
         >
           <time dateTime={shown.date}>{formatDay(shown.date)}</time>
           <strong>{formatKg(shown.maxKg)} kg</strong>
-          <span className="muted numeric">from {formatSet(shown.set)}</span>
+          <span className="muted numeric">from {formatSet(shown.set, exercise)}</span>
           {fit !== null && <span className="muted numeric">{formatChange(residualOf(active))} vs trend</span>}
         </div>
       )}

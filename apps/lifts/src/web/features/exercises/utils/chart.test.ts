@@ -1,15 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import type { LiftSet, Workout } from "../../../../contract";
+import type { LoggedSet } from "../../../../log";
 import { trend } from "../../../../trend";
 import { niceTicks } from "./chart";
 
 const workout = (date: string): Workout => ({ id: date, date, finishedAt: null, notes: "", bodyweightKg: null });
-const set = (weightKg: number, reps: number, kind: LiftSet["kind"] = "work"): LiftSet => ({
+const set = (weightKg: number, reps: number, kind: LiftSet["kind"] = "work"): LoggedSet => ({
   id: `${weightKg}x${reps}`,
   entryId: "entry",
   position: 0,
   weightKg,
+  loadKg: weightKg,
   reps,
+  seconds: null,
   rpe: 10,
   kind,
   loggedAt: "2026-10-01T18:00:00.000Z",
