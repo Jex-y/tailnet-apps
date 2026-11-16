@@ -1,5 +1,6 @@
 import { type AppModule, routePaths, serveRoutes } from "./app-module";
 import { errorResponse } from "./http";
+import { resolveViewer } from "./identity";
 import { createMcpRoutes } from "./mcp";
 import { appShellPath, SHELL_SLUG } from "./shell/contract";
 import { createShellRoutes, type ShellOptions } from "./shell/routes";
@@ -44,7 +45,7 @@ export const startServer = ({ port, development, apps, shell }: ServerOptions): 
       ...createShellRoutes(apps, shell),
       "/healthz": new Response("ok"),
       ...mergeAppRoutes(apps),
-      ...createMcpRoutes(apps, shell.identity),
+      ...createMcpRoutes(apps, async (request) => resolveViewer(shell.identity, request)),
     },
     fetch: () => Response.json({ error: "Not found" }, { status: 404 }),
     error: errorResponse,
