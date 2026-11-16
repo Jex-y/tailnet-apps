@@ -25,6 +25,9 @@ export const formatKg = (kg: number): string => kg.toLocaleString("en-GB", { max
 export const formatSet = (set: Pick<LiftSet, "weightKg" | "reps" | "rpe">): string =>
   `${formatKg(set.weightKg)}×${set.reps}${set.rpe === null ? "" : ` @${set.rpe}`}`;
 
+/** A signed change to one decimal, with a true minus sign. */
+export const formatChange = (kg: number): string => `${kg < 0 ? "−" : "+"}${Math.abs(kg).toFixed(1)}`;
+
 /** Minutes and seconds, as a rest timer shows them. */
 export const formatElapsed = (ms: number): string => {
   const seconds = Math.max(0, Math.floor(ms / 1000));

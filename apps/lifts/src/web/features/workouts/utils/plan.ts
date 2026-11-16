@@ -3,6 +3,12 @@ import { byPosition, type Session, sessionsOf, type WorkoutDetail } from "../../
 
 export type SetValues = Pick<LiftSet, "weightKg" | "reps" | "rpe" | "kind">;
 
+/** Just what a set's values are, without the identity and place of the set they were read from. */
+export const setValues = ({ weightKg, reps, rpe, kind }: SetValues): SetValues => ({ weightKg, reps, rpe, kind });
+
+/** A row's values: those logged, or those planned. */
+export const valuesOf = (row: Row): SetValues => (row.kind === "logged" ? setValues(row.set) : row.values);
+
 /** The empty bar for five, when there is nothing to go on. */
 const FIRST_EVER: SetValues = { weightKg: 20, reps: 5, rpe: null, kind: "work" };
 

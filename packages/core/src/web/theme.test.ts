@@ -48,5 +48,5 @@ test("every page applies the stored theme before first paint", async () => {
 test("an unknown stored theme falls back to the default", () => {
   expect(parseTheme("drafting")).toBe("drafting");
   expect(parseTheme(null)).toBe(DEFAULT_THEME);
-  expect(parseTheme("paper")).toBe(DEFAULT_THEME);
+  expect(parseTheme("vellum")).toBe(DEFAULT_THEME);
 });

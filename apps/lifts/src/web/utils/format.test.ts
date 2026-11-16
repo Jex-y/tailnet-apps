@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   dayBadge,
+  formatChange,
   formatDay,
   formatElapsed,
   formatKg,
@@ -22,4 +23,10 @@ test("formats days, weights, sets and rests as the screens show them", () => {
   expect(formatMonth("2026-10-01")).toBe("October 2026");
   expect(formatLongDay("2026-10-01")).toBe("Thursday 1 October");
   expect(dayBadge("2026-10-01")).toEqual({ weekday: "Thu", day: 1 });
+});
+
+test("signs a change with a true minus", () => {
+  expect(formatChange(0.44)).toBe("+0.4");
+  expect(formatChange(-2.06)).toBe("−2.1");
+  expect(formatChange(0)).toBe("+0.0");
 });

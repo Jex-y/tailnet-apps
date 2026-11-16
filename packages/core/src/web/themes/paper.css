@@ -1,0 +1,57 @@
+/*
+ * Paper: warm off-white with one cobalt accent, for bright rooms and daylight where dark themes wash out. Light
+ * whatever the system scheme. Set in the system face, with figures in tabular numerals, and dense enough for tables.
+ * Unlike the other themes its accent does not follow `--hue`: the cobalt is the one colour the palette is built round.
+ */
+[data-theme="paper"] {
+  color-scheme: light;
+  --bg: #f3f2ee;
+  --ground: none;
+  --surface: #ffffff;
+  --surface-2: #e8e6e0;
+  --surface-raised: #ffffff;
+  --chrome: rgb(243 242 238 / 0.88);
+  --chrome-blur: blur(16px) saturate(1.4);
+  --fg: #121212;
+  --on-fg: #ffffff;
+  --muted: #5c5953;
+  --border: #e2dfd8;
+  --edge: #d6d3cb;
+  --border-strong: #121212;
+  --accent: #1f4fe0;
+  --on-accent: #ffffff;
+  --accent-2: #a35200;
+  --pink: #b8336a;
+  --warning-bg: #f8e9c4;
+  --warning-fg: #6b4a00;
+  --error: #b42318;
+  --success: #1e7a45;
+  --shadow: none;
+  --shadow-raised: 0 18px 40px -16px rgb(18 18 18 / 0.28);
+  --radius: 16px;
+  --radius-small: 10px;
+  --radius-control: 12px;
+  --font-body: -apple-system, "SF Pro Text", "Geist Variable", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Geist Mono Variable", Menlo, monospace;
+  --figure-font: var(--font-body);
+  --heading-tracking: -0.02em;
+  --label-font: var(--font-body);
+  --label-case: uppercase;
+  --label-tracking: 0.03em;
+  --label-size: 0.75rem;
+  --label-size-small: 0.6875rem;
+  --label-weight: 700;
+  --control-font: var(--font-body);
+  --control-case: none;
+  --control-tracking: 0;
+  --control-size: 0.9375rem;
+  --control-weight: 600;
+  --control-bg: #e8e6e0;
+  --control-edge: transparent;
+  --control-hover-bg: #dedbd3;
+  --control-hover-fg: var(--fg);
+  --primary-bg: var(--accent);
+  --primary-fg: var(--on-accent);
+  --primary-hover-bg: #1a43c2;
+  --primary-hover-fg: var(--on-accent);
+}

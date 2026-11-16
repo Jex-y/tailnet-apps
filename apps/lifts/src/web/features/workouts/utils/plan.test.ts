@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { LiftSet } from "../../../../contract";
 import type { WorkoutDetail } from "../../../../log";
-import { doneRows, lastSession, NO_INTENT, openRows, type Row, startingPoints, withChange } from "./plan";
+import { doneRows, lastSession, NO_INTENT, openRows, type Row, startingPoints, valuesOf, withChange } from "./plan";
 
 const exercise = (id: string) => ({ id, name: id, lift: null });
 
@@ -149,5 +149,17 @@ describe("startingPoints", () => {
 
     expect(startingPoints(history, 3).map((each) => each.id)).toEqual(["c", "b"]);
     expect(startingPoints(history, 1).map((each) => each.id)).toEqual(["c"]);
+  });
+});
+
+describe("valuesOf", () => {
+  test("takes a logged set's values without its identity, so they can be logged afresh", () => {
+    const logged = set(100, 5, { position: 3 });
+    expect(valuesOf({ kind: "logged", index: 3, set: logged, previous: null })).toEqual({
+      weightKg: 100,
+      reps: 5,
+      rpe: 8,
+      kind: "work",
+    });
   });
 });

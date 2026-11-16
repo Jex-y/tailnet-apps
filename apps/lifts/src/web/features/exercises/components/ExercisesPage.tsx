@@ -5,7 +5,7 @@ import type { WorkoutDetail } from "../../../../log";
 import { formatDay, formatKg } from "../../../utils/format";
 import { useExerciseActions } from "../api/exercises";
 import { LIFT_NAMES, missingLifts, summarise } from "../utils/lifts";
-import { Standings } from "./Standings";
+import { StrengthOverview } from "./StrengthOverview";
 
 type Props = {
   readonly exercises: readonly Exercise[];
@@ -32,7 +32,7 @@ export const ExercisesPage = ({ exercises, workouts }: Props) => {
   return (
     <>
       <h1>Exercises</h1>
-      <Standings exercises={exercises} workouts={workouts} />
+      <StrengthOverview exercises={exercises} workouts={workouts} />
       {summaries.length === 0 && <p className="muted">Exercises you log appear here with their records.</p>}
       {summaries.length > 0 && (
         <ul className="card rows">
