@@ -115,6 +115,29 @@ export type ConnectorServerOptions = {
   readonly store: ConnectorStore;
 };
 
+type Handler = (request: Request) => Response | Promise<Response>;
+type Route = Handler | Readonly<Record<string, Handler>>;
+
+/** Logs every request without its query string or body, which may carry codes and tokens. */
+const logged =
+  (handle: Handler): Handler =>
+  async (request) => {
+    const response = await handle(request);
+    const agent = request.headers.get("User-Agent") ?? "-";
+    console.log(`connector ${request.method} ${new URL(request.url).pathname} ${response.status} ${agent}`);
+    return response;
+  };
+
+const logRoutes = (routes: Readonly<Record<string, Route>>): Record<string, Route> =>
+  Object.fromEntries(
+    Object.entries(routes).map(([path, route]) => [
+      path,
+      typeof route === "function"
+        ? logged(route)
+        : Object.fromEntries(Object.entries(route).map(([method, handle]) => [method, logged(handle)])),
+    ]),
+  );
+
 const BearerToken = z
   .string()
   .regex(/^Bearer [\w.~+/-]+=*$/)
@@ -155,25 +178,29 @@ export const startConnectorServer = ({
     );
   };
 
+  const authorizationServer = Response.json({
+    issuer: url,
+    authorization_endpoint: `${publicUrl}${AUTHORIZE_PATH}`,
+    token_endpoint: `${url}/oauth/token`,
+    registration_endpoint: `${url}/oauth/register`,
+    response_types_supported: ["code"],
+    grant_types_supported: ["authorization_code", "refresh_token"],
+    code_challenge_methods_supported: ["S256"],
+    token_endpoint_auth_methods_supported: ["none"],
+  });
+
   return Bun.serve({
     port,
-    routes: {
+    routes: logRoutes({
       [PROTECTED_RESOURCE_PATH]: resourceMetadata,
       [`${PROTECTED_RESOURCE_PATH}/*`]: resourceMetadata,
-      "/.well-known/oauth-authorization-server": Response.json({
-        issuer: url,
-        authorization_endpoint: `${publicUrl}${AUTHORIZE_PATH}`,
-        token_endpoint: `${url}/oauth/token`,
-        registration_endpoint: `${url}/oauth/register`,
-        response_types_supported: ["code"],
-        grant_types_supported: ["authorization_code", "refresh_token"],
-        code_challenge_methods_supported: ["S256"],
-        token_endpoint_auth_methods_supported: ["none"],
-      }),
+      "/.well-known/oauth-authorization-server": () => authorizationServer.clone(),
       "/oauth/register": {
         POST: async (request) => {
-          const registration = RegistrationRequest.safeParse(await request.json().catch(() => null));
+          const body: unknown = await request.json().catch(() => null);
+          const registration = RegistrationRequest.safeParse(body);
           if (!registration.success) {
+            console.log(`connector refused to register ${JSON.stringify(body)}`);
             return oauthError("invalid_redirect_uri", z.prettifyError(registration.error));
           }
           const client = registerClient(registration.data);
@@ -205,8 +232,8 @@ export const startConnectorServer = ({
         },
       },
       ...createMcpRoutes(apps, authenticate),
-    },
-    fetch: () => Response.json({ error: "Not found" }, { status: 404 }),
+    }),
+    fetch: logged(() => Response.json({ error: "Not found" }, { status: 404 })),
     error: errorResponse,
   });
 };
