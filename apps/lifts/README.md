@@ -5,6 +5,12 @@ apart from the other apps: it keeps its own look, Paper (`src/web/paper.css`), w
 only to its own sections. A workout holds exercises in order, each with its sets: weight, reps, an optional RPE, and
 whether it was a warm-up.
 
+An exercise counts reps or, if timed (a weighted plank, a carry), seconds; which is fixed once it is logged or
+programmed. An exercise may also take bodyweight into its load (a pull-up, a dip): its sets give the weight added,
+written `BW+20`, and its load is that plus the workout's bodyweight, or the latest logged before it. Estimated maxes,
+records and tonnage are worked out on that load; a timed exercise has none of them, and reads its longest hold
+instead.
+
 - **Log**: the session under way. A new one starts from a past session's exercises or empty. Exercises done fold to a
   line; the one being lifted is a dense table of its sets, each beside what was lifted in its place last time, with the
   max it implies and how that compares with last session; the rest wait below. A dock above the tab bar logs each set:
@@ -18,8 +24,8 @@ whether it was a warm-up.
   exercise's page fits its trend and reads its rep–strength profile (below), then lists the heaviest set at each rep
   count and every session.
 
-Estimated one-rep maxes come from the Reactive Training Systems RPE chart, taking a set without an RPE as all-out;
-warm-ups never count. That arithmetic is in `src/strength.ts`, pure and shared by the server and the UI.
+Estimated one-rep maxes come from the Reactive Training Systems RPE chart on the whole load, taking a set without an
+RPE as all-out; warm-ups never count. That arithmetic is in `src/strength.ts`, pure and shared by the server and the UI.
 
 ## Statistics
 
@@ -32,7 +38,7 @@ it beats that prediction interval. The total adds the three lifts' fitted values
 independent, on the fewest degrees of freedom among them.
 
 The rep–strength profile first carries every work set in the span to today's level along the trend, then fits one
-max to them all by least squares on weight = max × the RPE chart's share for the set's reps and RPE. Each rep range
+max to them all by least squares on load = max × the RPE chart's share for the set's reps and RPE. Each rep range
 is read as its sets' mean distance from that max with a t interval, and flagged only when the interval leaves out
 zero. The arithmetic is in `src/web/features/exercises/utils/fit.ts` and `progress.ts`, with tests that check the
 intervals' coverage by simulation.

@@ -30,22 +30,33 @@ describe("press", () => {
 
 describe("parseDraft", () => {
   test("reads figures the log can hold, an empty RPE being none", () => {
-    expect(parseDraft(draftOf({ weightKg: 142.5, reps: 5, rpe: null }))).toEqual({
+    expect(parseDraft(draftOf({ weightKg: 142.5, reps: 5, seconds: null, rpe: null }), "reps")).toEqual({
       ok: true,
-      values: { weightKg: 142.5, reps: 5, rpe: null },
+      values: { weightKg: 142.5, reps: 5, seconds: null, rpe: null },
     });
-    expect(parseDraft({ weightKg: "100", reps: "0", rpe: "8.5" })).toEqual({
+    expect(parseDraft({ weightKg: "100", count: "0", rpe: "8.5" }, "reps")).toEqual({
       ok: true,
-      values: { weightKg: 100, reps: 0, rpe: 8.5 },
+      values: { weightKg: 100, reps: 0, seconds: null, rpe: 8.5 },
     });
   });
 
-  test("names every field it cannot take", () => {
-    expect(parseDraft({ weightKg: "", reps: "5", rpe: "" })).toEqual({ ok: false, invalid: ["weightKg"] });
-    expect(parseDraft({ weightKg: "1200", reps: "101", rpe: "8.3" })).toEqual({
-      ok: false,
-      invalid: ["weightKg", "reps", "rpe"],
+  test("reads the count as seconds for a timed exercise, which may run past a hundred", () => {
+    expect(parseDraft(draftOf({ weightKg: 20, reps: null, seconds: 90, rpe: null }), "seconds")).toEqual({
+      ok: true,
+      values: { weightKg: 20, reps: null, seconds: 90, rpe: null },
     });
-    expect(parseDraft({ weightKg: "100.", reps: "5", rpe: "11" })).toEqual({ ok: false, invalid: ["weightKg", "rpe"] });
+    expect(parseDraft({ weightKg: "0", count: "120", rpe: "" }, "reps")).toEqual({ ok: false, invalid: ["count"] });
+  });
+
+  test("names every field it cannot take", () => {
+    expect(parseDraft({ weightKg: "", count: "5", rpe: "" }, "reps")).toEqual({ ok: false, invalid: ["weightKg"] });
+    expect(parseDraft({ weightKg: "1200", count: "101", rpe: "8.3" }, "reps")).toEqual({
+      ok: false,
+      invalid: ["weightKg", "count", "rpe"],
+    });
+    expect(parseDraft({ weightKg: "100.", count: "5", rpe: "11" }, "reps")).toEqual({
+      ok: false,
+      invalid: ["weightKg", "rpe"],
+    });
   });
 });

@@ -6,8 +6,11 @@ import {
   Entry,
   Exercise,
   LiftSet,
+  MEASURES,
   type Mutation,
+  Reps,
   SET_KINDS,
+  Seconds,
   Workout,
 } from "../../contract";
 import { nextPosition, sessionsOf, workoutDetails } from "../../log";
@@ -67,6 +70,12 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
         weightStepKg: Exercise.shape.weightStepKg
           .default(DEFAULT_WEIGHT_STEP_KG)
           .describe("What prescribed weights round down to, such as 1 for an exercise loaded with microplates"),
+        measure: Exercise.shape.measure
+          .default("reps")
+          .describe("What its sets count: reps, or seconds for a timed exercise such as a weighted plank or a carry"),
+        bodyweight: Exercise.shape.bodyweight
+          .default(false)
+          .describe("Whether bodyweight is part of the load, as in a pull-up or dip; sets then give the weight added"),
       },
       annotations: change,
     },
@@ -80,16 +89,18 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
     "update_exercise",
     {
       description:
-        "Renames an exercise, changes which competition lift it stands for or the step its prescribed weights round down to. Only the fields given change.",
+        "Renames an exercise, or changes which competition lift it stands for, the step its prescribed weights round down to, whether bodyweight is part of its load, or what it counts, which only an exercise never logged or programmed can. Only the fields given change.",
       inputSchema: {
         exerciseId: ExerciseId,
         name: Exercise.shape.name.optional(),
         lift: z.enum(COMPETITION_LIFTS).nullable().optional().describe("null to stop it standing for a lift"),
         weightStepKg: Exercise.shape.weightStepKg.optional(),
+        measure: z.enum(MEASURES).optional(),
+        bodyweight: Exercise.shape.bodyweight.optional(),
       },
       annotations: edit,
     },
-    ({ exerciseId, name, lift, weightStepKg }) =>
+    ({ exerciseId, name, lift, weightStepKg, measure, bodyweight }) =>
       toolResult(async () => {
         const { exercises } = await service.log(owner);
         const exercise = exercises.find((other) => other.id === exerciseId) ?? notFound();
@@ -101,6 +112,8 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
               name: name ?? exercise.name,
               lift: lift === undefined ? exercise.lift : lift,
               weightStepKg: weightStepKg ?? exercise.weightStepKg,
+              measure: measure ?? exercise.measure,
+              bodyweight: bodyweight ?? exercise.bodyweight,
             },
           },
         ]);
@@ -128,7 +141,7 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
     "get_exercise_history",
     {
       description:
-        "Reads one exercise's sessions newest first, with its best estimated max and the heaviest set at each rep count.",
+        "Reads one exercise's sessions newest first, with its best estimated max and the heaviest set at each rep count. A timed exercise has neither.",
       inputSchema: {
         exerciseId: ExerciseId,
         limit: z.number().int().min(1).max(200).default(20).describe("How many sessions to read"),
@@ -150,10 +163,15 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
           bestEstimatedMax:
             best === null
               ? null
-              : { maxKg: round(best.maxKg), from: setText(best.set), date: dateOf.get(best.set.id) ?? null },
-          repRecords: repRecords(all).map(({ reps, set }) => ({
+              : {
+                  maxKg: round(best.maxKg),
+                  from: setText(best.set, exercise),
+                  date: dateOf.get(best.set.id) ?? null,
+                },
+          repRecords: repRecords(all).map(({ reps, loadKg, set }) => ({
             reps,
             weightKg: set.weightKg,
+            ...(exercise.bodyweight && { loadKg }),
             date: dateOf.get(set.id) ?? null,
           })),
           sessions: sessions
@@ -163,7 +181,7 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
               workoutId: workout.id,
               date: workout.date,
               estimatedMaxKg: maxOf(sets),
-              sets: sets.map(setText),
+              sets: sets.map((set) => setText(set, exercise)),
             })),
         };
       }),
@@ -365,13 +383,14 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
       inputSchema: {
         setId: SetId,
         weightKg: LiftSet.shape.weightKg.optional(),
-        reps: LiftSet.shape.reps.optional(),
+        reps: Reps.optional(),
+        seconds: Seconds.optional(),
         rpe: LiftSet.shape.rpe.optional().describe("null to clear it"),
         kind: z.enum(SET_KINDS).optional(),
       },
       annotations: edit,
     },
-    ({ setId, weightKg, reps, rpe, kind }) =>
+    ({ setId, weightKg, reps, seconds, rpe, kind }) =>
       toolResult(async () => {
         const { entries, sets } = await service.log(owner);
         const set = sets.find((other) => other.id === setId) ?? notFound();
@@ -383,6 +402,7 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
               ...set,
               weightKg: weightKg ?? set.weightKg,
               reps: reps ?? set.reps,
+              seconds: seconds ?? set.seconds,
               rpe: rpe === undefined ? set.rpe : rpe,
               kind: kind ?? set.kind,
             },

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { LiftSet } from "../../../../contract";
 import { linearFit } from "../../../../fit";
+import type { LoggedSet } from "../../../../log";
 import { maxShare } from "../../../../strength";
 import { type TrendPoint, trendOver, weeksFrom } from "../../../../trend";
 import { atTodaysLevel, repProfile } from "./progress";
@@ -13,7 +13,9 @@ const point = (date: string, maxKg: number): TrendPoint => ({
     entryId: "entry",
     position: 0,
     weightKg: maxKg,
+    loadKg: maxKg,
     reps: 1,
+    seconds: null,
     rpe: 10,
     kind: "work",
     loggedAt: `${date}T18:00:00.000Z`,
@@ -69,11 +71,11 @@ describe("trendOver", () => {
   });
 });
 
-type Effort = Pick<LiftSet, "weightKg" | "reps" | "rpe" | "kind">;
+type Effort = Pick<LoggedSet, "loadKg" | "reps" | "rpe" | "kind">;
 
 /** A set that is exactly what a max implies, scaled by `bias`. */
 const implied = (maxKg: number, reps: number, rpe: number, bias = 1): Effort => ({
-  weightKg: maxKg * (maxShare(reps, rpe) ?? 0) * bias,
+  loadKg: maxKg * (maxShare(reps, rpe) ?? 0) * bias,
   reps,
   rpe,
   kind: "work",
@@ -104,8 +106,10 @@ describe("repProfile", () => {
     const profile = repProfile([
       implied(200, 3, 8),
       implied(200, 5, 8),
-      { weightKg: 60, reps: 5, rpe: null, kind: "warmup" },
-      { weightKg: 60, reps: 20, rpe: null, kind: "work" },
+      { loadKg: 60, reps: 5, rpe: null, kind: "warmup" },
+      { loadKg: 60, reps: 20, rpe: null, kind: "work" },
+      { loadKg: 60, reps: null, rpe: null, kind: "work" },
+      { loadKg: null, reps: 5, rpe: null, kind: "work" },
     ]);
     expect(profile?.sets).toHaveLength(2);
     expect(profile?.ranges.map(({ n }) => n)).toEqual([1, 1, 0]);
@@ -127,10 +131,10 @@ describe("atTodaysLevel", () => {
       { x: 0, y: 200 },
     ]);
     const sets = atTodaysLevel([session("2026-11-02", 90), session("2026-11-16", 100)], fit, "2026-11-16");
-    expect(sets.map(({ weightKg }) => weightKg)).toEqual([100, 100]);
+    expect(sets.map(({ loadKg }) => loadKg)).toEqual([100, 100]);
   });
 
   test("leaves sets as lifted without a trend", () => {
-    expect(atTodaysLevel([session("2026-11-02", 90)], null, "2026-11-16")[0]?.weightKg).toBe(90);
+    expect(atTodaysLevel([session("2026-11-02", 90)], null, "2026-11-16")[0]?.loadKg).toBe(90);
   });
 });

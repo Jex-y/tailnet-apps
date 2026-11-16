@@ -82,7 +82,7 @@ export const StrengthOverview = ({ exercises, workouts }: Props) => {
               <span className="muted">A trend needs three sessions in the last {weeks} weeks.</span>
             ) : (
               <>
-                <TrendChart trend={lifted} weeks={weeks} compact />
+                <TrendChart trend={lifted} exercise={exercise} weeks={weeks} compact />
                 <span className="lift-card-foot">
                   <span className="muted">last {weeks} weeks</span>
                   <span>

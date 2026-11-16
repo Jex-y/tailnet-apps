@@ -1,23 +1,43 @@
 import { describe, expect, test } from "bun:test";
-import type { LiftSet } from "../../../../contract";
-import type { WorkoutDetail } from "../../../../log";
-import { doneRows, lastSession, NO_INTENT, openRows, type Row, startingPoints, valuesOf, withChange } from "./plan";
+import type { LoggedSet, WorkoutDetail } from "../../../../log";
+import {
+  doneRows,
+  firstSet,
+  lastSession,
+  NO_INTENT,
+  openRows,
+  type Row,
+  startingPoints,
+  valuesOf,
+  withChange,
+} from "./plan";
 
-const exercise = (id: string) => ({ id, name: id, lift: null, weightStepKg: 2.5 });
+const exercise = (id: string) => ({
+  id,
+  name: id,
+  lift: null,
+  weightStepKg: 2.5,
+  measure: "reps" as const,
+  bodyweight: false,
+});
 
-const set = (weightKg: number, reps: number, fields: Partial<LiftSet> = {}): LiftSet => ({
+const FIRST = firstSet(exercise("squat"));
+
+const set = (weightKg: number, reps: number, fields: Partial<LoggedSet> = {}): LoggedSet => ({
   id: `${weightKg}x${reps}@${fields.position ?? 0}`,
   entryId: "entry",
   position: 0,
   weightKg,
+  loadKg: weightKg,
   reps,
+  seconds: null,
   rpe: 8,
   kind: "work",
   loggedAt: "2026-10-01T18:00:00.000Z",
   ...fields,
 });
 
-const workout = (id: string, date: string, trained: Record<string, LiftSet[]>, finished = true): WorkoutDetail => ({
+const workout = (id: string, date: string, trained: Record<string, LoggedSet[]>, finished = true): WorkoutDetail => ({
   id,
   date,
   finishedAt: finished ? `${date}T19:00:00.000Z` : null,
@@ -37,8 +57,8 @@ const workout = (id: string, date: string, trained: Record<string, LiftSet[]>, f
 const brief = (rows: readonly Row[]) =>
   rows.map((row) =>
     row.kind === "logged"
-      ? `done ${row.set.weightKg}x${row.set.reps}`
-      : `${row.values.kind === "warmup" ? "warm " : ""}${row.values.weightKg}x${row.values.reps}`,
+      ? `done ${row.set.weightKg}x${row.set.reps ?? `${row.set.seconds}s`}`
+      : `${row.values.kind === "warmup" ? "warm " : ""}${row.values.weightKg}x${row.values.reps ?? `${row.values.seconds}s`}`,
   );
 
 const lastTime = [
@@ -65,7 +85,7 @@ describe("lastSession", () => {
 
 describe("openRows", () => {
   test("lays out last session's sets to do again, each without its RPE", () => {
-    const rows = openRows([], lastTime, NO_INTENT);
+    const rows = openRows([], lastTime, NO_INTENT, FIRST);
 
     expect(brief(rows)).toEqual(["warm 60x5", "140x5", "140x5", "140x4"]);
     expect(rows.every((row) => row.kind === "planned" && row.values.rpe === null)).toBe(true);
@@ -73,20 +93,36 @@ describe("openRows", () => {
   });
 
   test("offers one set from the empty bar when the exercise is new", () => {
-    expect(brief(openRows([], [], NO_INTENT))).toEqual(["20x5"]);
+    expect(brief(openRows([], [], NO_INTENT, FIRST))).toEqual(["20x5"]);
+  });
+
+  test("offers bodyweight alone, or half a minute, for a new bodyweight or timed exercise", () => {
+    const hang = firstSet({ measure: "seconds", bodyweight: true });
+    expect(brief(openRows([], [], NO_INTENT, firstSet({ measure: "reps", bodyweight: true })))).toEqual(["0x5"]);
+    expect(brief(openRows([], [], NO_INTENT, hang))).toEqual(["0x30s"]);
+  });
+
+  test("makes good a missed timed set, as a missed rep", () => {
+    const missed = set(40, 0, { reps: null, seconds: 0 });
+    expect(brief(openRows([], [missed], NO_INTENT, FIRST))).toEqual(["40x1s"]);
   });
 
   test("keeps sets done where they were logged, with the rest still to do around them", () => {
     const done = [set(60, 5, { kind: "warmup", position: 0 }), set(145, 5, { position: 2 })];
 
-    expect(brief(openRows(done, lastTime, NO_INTENT))).toEqual(["done 60x5", "140x5", "done 145x5", "145x4"]);
+    expect(brief(openRows(done, lastTime, NO_INTENT, FIRST))).toEqual(["done 60x5", "140x5", "done 145x5", "145x4"]);
   });
 
   test("moves the sets to do along with a set done at a new weight, and only those that shared its old one", () => {
     const done = [set(60, 5, { kind: "warmup", position: 0 }), set(142.5, 5, { position: 1 })];
 
-    expect(brief(openRows(done, lastTime, NO_INTENT))).toEqual(["done 60x5", "done 142.5x5", "142.5x5", "142.5x4"]);
-    expect(brief(openRows([set(70, 5, { kind: "warmup", position: 0 })], lastTime, NO_INTENT))).toEqual([
+    expect(brief(openRows(done, lastTime, NO_INTENT, FIRST))).toEqual([
+      "done 60x5",
+      "done 142.5x5",
+      "142.5x5",
+      "142.5x4",
+    ]);
+    expect(brief(openRows([set(70, 5, { kind: "warmup", position: 0 })], lastTime, NO_INTENT, FIRST))).toEqual([
       "done 70x5",
       "140x5",
       "140x5",
@@ -97,11 +133,11 @@ describe("openRows", () => {
   test("gives sets logged at the same place a row each", () => {
     const done = [set(100, 5, { id: "a", position: 0 }), set(105, 5, { id: "b", position: 0 })];
 
-    expect(brief(openRows(done, [], NO_INTENT))).toEqual(["done 100x5", "done 105x5"]);
+    expect(brief(openRows(done, [], NO_INTENT, FIRST))).toEqual(["done 100x5", "done 105x5"]);
   });
 
   test("adds sets beyond last session's as repeats of the row above", () => {
-    const rows = openRows([set(150, 3, { position: 0 })], [set(140, 5)], { ...NO_INTENT, extra: 2 });
+    const rows = openRows([set(150, 3, { position: 0 })], [set(140, 5)], { ...NO_INTENT, extra: 2 }, FIRST);
 
     expect(brief(rows)).toEqual(["done 150x3", "150x3", "150x3"]);
   });
@@ -110,19 +146,28 @@ describe("openRows", () => {
 describe("withChange", () => {
   test("carries a new weight down the matching sets still to do, leaving warm-ups and sets done alone", () => {
     const done = [set(140, 5, { position: 1 })];
-    const rows = openRows(done, lastTime, NO_INTENT);
+    const rows = openRows(done, lastTime, NO_INTENT, FIRST);
 
     const raised = withChange(rows, NO_INTENT, 2, { weightKg: 142.5 });
 
-    expect(brief(openRows(done, lastTime, raised))).toEqual(["warm 60x5", "done 140x5", "142.5x5", "142.5x4"]);
+    expect(brief(openRows(done, lastTime, raised, FIRST))).toEqual(["warm 60x5", "done 140x5", "142.5x5", "142.5x4"]);
   });
 
   test("carries reps only to sets that had the same count", () => {
-    const rows = openRows([], lastTime, NO_INTENT);
+    const rows = openRows([], lastTime, NO_INTENT, FIRST);
 
     const fewer = withChange(rows, NO_INTENT, 1, { reps: 3 });
 
-    expect(brief(openRows([], lastTime, fewer))).toEqual(["warm 60x5", "140x3", "140x3", "140x4"]);
+    expect(brief(openRows([], lastTime, fewer, FIRST))).toEqual(["warm 60x5", "140x3", "140x3", "140x4"]);
+  });
+
+  test("carries a new time down the sets that were held as long", () => {
+    const held = [30, 30, 20].map((seconds, position) => set(20, 0, { reps: null, seconds, position }));
+    const rows = openRows([], held, NO_INTENT, FIRST);
+
+    const longer = withChange(rows, NO_INTENT, 0, { seconds: 45 });
+
+    expect(brief(openRows([], held, longer, FIRST))).toEqual(["20x45s", "20x45s", "20x20s"]);
   });
 });
 
@@ -158,6 +203,7 @@ describe("valuesOf", () => {
     expect(valuesOf({ kind: "logged", index: 3, set: logged, previous: null })).toEqual({
       weightKg: 100,
       reps: 5,
+      seconds: null,
       rpe: 8,
       kind: "work",
     });

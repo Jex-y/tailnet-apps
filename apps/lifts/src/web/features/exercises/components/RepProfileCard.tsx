@@ -1,4 +1,4 @@
-import type { LiftSet } from "../../../../contract";
+import type { LoggedSet } from "../../../../log";
 import { maxShare } from "../../../../strength";
 import { formatKg } from "../../../utils/format";
 import { useElementWidth } from "../hooks/useElementWidth";
@@ -21,7 +21,7 @@ const signed = (pct: number) => `${pct < 0 ? "−" : "+"}${Math.abs(pct).toFixed
  * each rep range's mean distance from that max with its 95% interval: a range is flagged only when the interval
  * leaves out zero.
  */
-export const RepProfileCard = ({ profile }: { readonly profile: RepProfile<LiftSet> }) => {
+export const RepProfileCard = ({ profile }: { readonly profile: RepProfile<LoggedSet> }) => {
   const { ref, width } = useElementWidth<HTMLDivElement>();
   const curve = (rir: number) =>
     Array.from({ length: 45 }, (_, index) => 1 + (index / 44) * (MAX_REPS - 1)).flatMap((reps) => {
@@ -31,8 +31,8 @@ export const RepProfileCard = ({ profile }: { readonly profile: RepProfile<LiftS
   const [allOut, inReserve] = [curve(0), curve(2)];
   const shown = profile.sets.filter(({ reps }) => reps <= MAX_REPS);
   const ticks = niceTicks(
-    Math.min(...shown.map(({ weightKg }) => weightKg), ...inReserve.map(({ kg }) => kg)),
-    Math.max(...shown.map(({ weightKg }) => weightKg), profile.maxKg),
+    Math.min(...shown.map(({ loadKg }) => loadKg), ...inReserve.map(({ kg }) => kg)),
+    Math.max(...shown.map(({ loadKg }) => loadKg), profile.maxKg),
     4,
   );
   const [low, high] = [ticks[0] ?? 0, ticks.at(-1) ?? 1];
@@ -83,7 +83,7 @@ export const RepProfileCard = ({ profile }: { readonly profile: RepProfile<LiftS
                 className={set.rpe !== null && set.rpe < 8.5 ? "dot easy" : "dot"}
                 // Spread a little sideways, so equal sets do not hide one another.
                 cx={px(set.reps) + ((index % 5) - 2) * 1.5}
-                cy={py(set.weightKg)}
+                cy={py(set.loadKg)}
                 r={3}
               />
             ))}
@@ -142,8 +142,8 @@ export const RepProfileCard = ({ profile }: { readonly profile: RepProfile<LiftS
         </tbody>
       </table>
       <p className="footnote muted">
-        Each work set’s weight is first carried to today’s level along the trend, then one max is fitted to them all by
-        least squares on weight = max × the chart’s share for its reps and RPE. Ranges show their sets’ mean distance
+        Each work set’s load is first carried to today’s level along the trend, then one max is fitted to them all by
+        least squares on load = max × the chart’s share for its reps and RPE. Ranges show their sets’ mean distance
         from it, with a t interval.
       </p>
     </section>

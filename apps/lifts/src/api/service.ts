@@ -1,9 +1,10 @@
 import { HttpError } from "@apps/core";
-import { and, count, eq, ne, or } from "drizzle-orm";
+import { and, count, eq, isNull, ne, or, type SQL } from "drizzle-orm";
 import type {
   Entry,
   Exercise,
   LiftSet,
+  Measure,
   Mutation,
   Prescription,
   Program,
@@ -60,6 +61,52 @@ const requireOwn = async (found: Promise<readonly unknown[]>, missing: string) =
   }
 };
 
+type Counted = { readonly reps: number | null; readonly seconds: number | null };
+
+/** Whether any set matching `where` is counted otherwise than in `measure`. */
+const setsCountedOtherwise = async (tx: Tx, owner: string, measure: Measure, where: SQL | undefined) =>
+  (
+    await tx
+      .select({ id: sets.id })
+      .from(sets)
+      .innerJoin(entries, and(eq(entries.owner, owner), eq(entries.id, sets.entryId)))
+      .where(and(eq(sets.owner, owner), where, isNull(measure === "reps" ? sets.reps : sets.seconds)))
+      .limit(1)
+  ).length > 0;
+
+/** Whether any prescription matching `where` is counted otherwise than in `measure`. */
+const prescriptionsCountedOtherwise = async (tx: Tx, owner: string, measure: Measure, where: SQL | undefined) =>
+  (
+    await tx
+      .select({ id: prescriptions.id })
+      .from(prescriptions)
+      .innerJoin(
+        programExercises,
+        and(eq(programExercises.owner, owner), eq(programExercises.id, prescriptions.programExerciseId)),
+      )
+      .where(
+        and(
+          eq(prescriptions.owner, owner),
+          where,
+          isNull(measure === "reps" ? prescriptions.reps : prescriptions.seconds),
+        ),
+      )
+      .limit(1)
+  ).length > 0;
+
+type Measured = { readonly name: string; readonly measure: Measure };
+
+/** Refuses a set or prescription not counted in its exercise's measure. */
+const requireCountedIn = (exercise: Measured, { reps, seconds }: Counted) => {
+  if ((reps === null) === (seconds === null)) {
+    throw new HttpError(400, "Give either reps or seconds, not both");
+  }
+  const given: Measure = reps === null ? "seconds" : "reps";
+  if (given !== exercise.measure) {
+    throw new HttpError(409, `"${exercise.name}" is counted in ${exercise.measure}, not ${given}`);
+  }
+};
+
 const putExercise = async (tx: Tx, owner: string, { id, ...fields }: Exercise) => {
   if (fields.lift !== null) {
     const [holder] = await tx
@@ -69,6 +116,15 @@ const putExercise = async (tx: Tx, owner: string, { id, ...fields }: Exercise) =
     if (holder !== undefined && holder.id !== id) {
       throw new HttpError(409, `"${holder.name}" is already your ${fields.lift}`);
     }
+  }
+  const counted =
+    (await setsCountedOtherwise(tx, owner, fields.measure, eq(entries.exerciseId, id))) ||
+    (await prescriptionsCountedOtherwise(tx, owner, fields.measure, eq(programExercises.exerciseId, id)));
+  if (counted) {
+    throw new HttpError(
+      409,
+      `"${fields.name}" has been logged or programmed, so it cannot be counted in ${fields.measure}`,
+    );
   }
   requireWritten(
     await tx
@@ -110,6 +166,26 @@ const deleteExercise = async (tx: Tx, owner: string, id: string) => {
   await tx.delete(exercises).where(and(eq(exercises.id, id), eq(exercises.owner, owner)));
 };
 
+const ownProgram = (tx: Tx, owner: string, id: string) =>
+  requireOwn(
+    tx
+      .select({ id: programs.id })
+      .from(programs)
+      .where(and(eq(programs.id, id), eq(programs.owner, owner))),
+    "That program no longer exists",
+  );
+
+const ownExercise = async (tx: Tx, owner: string, id: string): Promise<Measured> => {
+  const [exercise] = await tx
+    .select({ name: exercises.name, measure: exercises.measure })
+    .from(exercises)
+    .where(and(eq(exercises.id, id), eq(exercises.owner, owner)));
+  if (exercise === undefined) {
+    throw new HttpError(409, "That exercise no longer exists");
+  }
+  return exercise;
+};
+
 const putWorkout = async (tx: Tx, owner: string, { id, finishedAt, ...fields }: Workout) => {
   const values = { ...fields, finishedAt: finishedAt === null ? null : new Date(finishedAt) };
   requireWritten(
@@ -129,13 +205,10 @@ const putEntry = async (tx: Tx, owner: string, { id, ...fields }: Entry) => {
       .where(and(eq(workouts.id, fields.workoutId), eq(workouts.owner, owner))),
     "That workout no longer exists",
   );
-  await requireOwn(
-    tx
-      .select({ id: exercises.id })
-      .from(exercises)
-      .where(and(eq(exercises.id, fields.exerciseId), eq(exercises.owner, owner))),
-    "That exercise no longer exists",
-  );
+  const exercise = await ownExercise(tx, owner, fields.exerciseId);
+  if (await setsCountedOtherwise(tx, owner, exercise.measure, eq(entries.id, id))) {
+    throw new HttpError(409, `"${exercise.name}" is counted in ${exercise.measure}, unlike the sets logged here`);
+  }
   requireWritten(
     await tx
       .insert(entries)
@@ -146,13 +219,15 @@ const putEntry = async (tx: Tx, owner: string, { id, ...fields }: Entry) => {
 };
 
 const putSet = async (tx: Tx, owner: string, { id, loggedAt, ...fields }: LiftSet) => {
-  await requireOwn(
-    tx
-      .select({ id: entries.id })
-      .from(entries)
-      .where(and(eq(entries.id, fields.entryId), eq(entries.owner, owner))),
-    "That exercise is no longer in the workout",
-  );
+  const [exercise] = await tx
+    .select({ name: exercises.name, measure: exercises.measure })
+    .from(entries)
+    .innerJoin(exercises, and(eq(exercises.owner, owner), eq(exercises.id, entries.exerciseId)))
+    .where(and(eq(entries.id, fields.entryId), eq(entries.owner, owner)));
+  if (exercise === undefined) {
+    throw new HttpError(409, "That exercise is no longer in the workout");
+  }
+  requireCountedIn(exercise, fields);
   const values = { ...fields, loggedAt: new Date(loggedAt) };
   requireWritten(
     await tx
@@ -162,24 +237,6 @@ const putSet = async (tx: Tx, owner: string, { id, loggedAt, ...fields }: LiftSe
       .returning({ id: sets.id }),
   );
 };
-
-const ownProgram = (tx: Tx, owner: string, id: string) =>
-  requireOwn(
-    tx
-      .select({ id: programs.id })
-      .from(programs)
-      .where(and(eq(programs.id, id), eq(programs.owner, owner))),
-    "That program no longer exists",
-  );
-
-const ownExercise = (tx: Tx, owner: string, id: string) =>
-  requireOwn(
-    tx
-      .select({ id: exercises.id })
-      .from(exercises)
-      .where(and(eq(exercises.id, id), eq(exercises.owner, owner))),
-    "That exercise no longer exists",
-  );
 
 const putProgram = async (tx: Tx, owner: string, { id, ...fields }: Program) => {
   requireWritten(
@@ -236,7 +293,10 @@ const putProgramExercise = async (tx: Tx, owner: string, { id, ...fields }: Prog
       .where(and(eq(programDays.id, fields.programDayId), eq(programDays.owner, owner))),
     "That program day no longer exists",
   );
-  await ownExercise(tx, owner, fields.exerciseId);
+  const exercise = await ownExercise(tx, owner, fields.exerciseId);
+  if (await prescriptionsCountedOtherwise(tx, owner, exercise.measure, eq(programExercises.id, id))) {
+    throw new HttpError(409, `"${exercise.name}" is counted in ${exercise.measure}, unlike the prescriptions here`);
+  }
   requireWritten(
     await tx
       .insert(programExercises)
@@ -247,13 +307,15 @@ const putProgramExercise = async (tx: Tx, owner: string, { id, ...fields }: Prog
 };
 
 const putPrescription = async (tx: Tx, owner: string, { id, load, ...rest }: Prescription) => {
-  await requireOwn(
-    tx
-      .select({ id: programExercises.id })
-      .from(programExercises)
-      .where(and(eq(programExercises.id, rest.programExerciseId), eq(programExercises.owner, owner))),
-    "That exercise is no longer in the program",
-  );
+  const [exercise] = await tx
+    .select({ name: exercises.name, measure: exercises.measure })
+    .from(programExercises)
+    .innerJoin(exercises, and(eq(exercises.owner, owner), eq(exercises.id, programExercises.exerciseId)))
+    .where(and(eq(programExercises.id, rest.programExerciseId), eq(programExercises.owner, owner)));
+  if (exercise === undefined) {
+    throw new HttpError(409, "That exercise is no longer in the program");
+  }
+  requireCountedIn(exercise, rest);
   const fields = { ...rest, ...loadColumns(load) };
   requireWritten(
     await tx

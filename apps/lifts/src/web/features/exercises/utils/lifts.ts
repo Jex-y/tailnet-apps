@@ -12,6 +12,20 @@ export const LIFT_NAMES: Record<CompetitionLift, string> = {
 export const missingLifts = (exercises: readonly Exercise[]): CompetitionLift[] =>
   COMPETITION_LIFTS.filter((lift) => !exercises.some((exercise) => exercise.lift === lift));
 
+/** How an exercise is loaded and counted, chosen as one. */
+export type Style = Pick<Exercise, "measure" | "bodyweight">;
+
+export const STYLES = [
+  { label: "Weight × reps", measure: "reps", bodyweight: false },
+  { label: "Bodyweight + kg × reps", measure: "reps", bodyweight: true },
+  { label: "Weight × time", measure: "seconds", bodyweight: false },
+  { label: "Bodyweight + kg × time", measure: "seconds", bodyweight: true },
+] as const satisfies readonly (Style & { readonly label: string })[];
+
+export const DEFAULT_STYLE: Style = STYLES[0];
+
+export const styleKey = ({ measure, bodyweight }: Style): string => `${measure}${bodyweight ? "+bodyweight" : ""}`;
+
 export type ExerciseSummary = {
   readonly exercise: Exercise;
   readonly sessions: number;

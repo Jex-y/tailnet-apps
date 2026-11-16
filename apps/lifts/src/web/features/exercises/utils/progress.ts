@@ -1,6 +1,5 @@
-import type { LiftSet } from "../../../../contract";
 import { type LinearFit, meanInterval, t975 } from "../../../../fit";
-import type { Session } from "../../../../log";
+import type { LoggedSet, Session } from "../../../../log";
 import { isWorkSet, maxShare } from "../../../../strength";
 import { weeksFrom } from "../../../../trend";
 
@@ -10,9 +9,14 @@ export const REP_RANGES = [
   { label: "7+", min: 7, max: Number.POSITIVE_INFINITY },
 ] as const;
 
-type Effort = Pick<LiftSet, "weightKg" | "reps" | "rpe" | "kind">;
+type Effort = Pick<LoggedSet, "loadKg" | "reps" | "rpe" | "kind">;
 
-export type ProfiledSet<S extends Effort = Effort> = S & { readonly share: number };
+/** A set the profile could read: its reps and load known, and within the RPE chart. */
+export type ProfiledSet<S extends Effort = Effort> = S & {
+  readonly reps: number;
+  readonly loadKg: number;
+  readonly share: number;
+};
 
 export type RangeReading = {
   readonly label: string;
@@ -32,28 +36,29 @@ export type RepProfile<S extends Effort = Effort> = {
 };
 
 /**
- * One max fitted to every work set at once, by least squares on weight = max × share(reps, RPE) through the origin,
+ * One max fitted to every work set at once, by least squares on load = max × share(reps, RPE) through the origin,
  * and how far each rep range sits from it. Ranges that read heavy are relatively strong; light ones under-trained.
  * `null` with fewer than two sets the RPE chart covers.
  */
 export const repProfile = <S extends Effort>(sets: readonly S[]): RepProfile<S> | null => {
-  const profiled = sets.flatMap((set) => {
-    const share = isWorkSet(set) ? maxShare(set.reps, set.rpe) : null;
-    return share === null ? [] : [{ ...set, share }];
+  const profiled = sets.flatMap((set): ProfiledSet<S>[] => {
+    const { reps, loadKg } = set;
+    const share = isWorkSet(set) ? maxShare(reps, set.rpe) : null;
+    return share === null || reps === null || loadKg === null ? [] : [{ ...set, reps, loadKg, share }];
   });
   const n = profiled.length;
   if (n < 2) {
     return null;
   }
   const sumSquares = profiled.reduce((sum, { share }) => sum + share ** 2, 0);
-  const maxKg = profiled.reduce((sum, { weightKg, share }) => sum + weightKg * share, 0) / sumSquares;
-  const sse = profiled.reduce((sum, { weightKg, share }) => sum + (weightKg - maxKg * share) ** 2, 0);
+  const maxKg = profiled.reduce((sum, { loadKg, share }) => sum + loadKg * share, 0) / sumSquares;
+  const sse = profiled.reduce((sum, { loadKg, share }) => sum + (loadKg - maxKg * share) ** 2, 0);
   const halfWidth = t975(n - 1) * Math.sqrt(sse / (n - 1) / sumSquares);
 
   const ranges = REP_RANGES.map(({ label, min, max }) => {
     const pcts = profiled
       .filter(({ reps }) => reps >= min && reps <= max)
-      .map(({ weightKg, share }) => (weightKg / (maxKg * share) - 1) * 100);
+      .map(({ loadKg, share }) => (loadKg / (maxKg * share) - 1) * 100);
     const interval = meanInterval(pcts);
     const halfWidthPct = interval?.halfWidth ?? null;
     const meanPct = interval?.mean ?? null;
@@ -71,12 +76,12 @@ export const repProfile = <S extends Effort>(sets: readonly S[]): RepProfile<S> 
 };
 
 /**
- * Each set's weight carried to today's level along the trend, so sets from weeks apart can be compared: without it a
+ * Each set's load carried to today's level along the trend, so sets from weeks apart can be compared: without it a
  * profile pooled over a span of progress reads the span's average, and whichever rep range was trained most recently
  * looks strongest. Left as lifted where there is no trend.
  */
-export const atTodaysLevel = (sessions: readonly Session[], fit: LinearFit | null, today: string): LiftSet[] =>
+export const atTodaysLevel = (sessions: readonly Session[], fit: LinearFit | null, today: string): LoggedSet[] =>
   sessions.flatMap(({ workout, sets }) => {
     const scale = fit === null ? 1 : fit.at(0) / fit.at(weeksFrom(workout.date, today));
-    return sets.map((set) => ({ ...set, weightKg: set.weightKg * scale }));
+    return sets.map((set) => ({ ...set, loadKg: set.loadKg === null ? null : set.loadKg * scale }));
   });

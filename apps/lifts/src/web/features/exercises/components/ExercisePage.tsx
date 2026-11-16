@@ -6,11 +6,12 @@ import { bestEstimate, isWorkSet, repRecords } from "../../../../strength";
 import { DEFAULT_WINDOW, trend, trendOver, type Window, weeksFrom } from "../../../../trend";
 import { ConfirmButton } from "../../../components/ConfirmButton";
 import { Icon } from "../../../components/Icon";
-import { dayBadge, formatDay, formatKg, formatSet, localToday } from "../../../utils/format";
+import { dayBadge, formatDay, formatKg, formatSet, formatWeight, localToday } from "../../../utils/format";
 import { useExerciseActions } from "../api/exercises";
 import { LIFT_NAMES } from "../utils/lifts";
 import { atTodaysLevel, repProfile } from "../utils/progress";
 import { RepProfileCard } from "./RepProfileCard";
+import { StyleSelect } from "./StyleSelect";
 import { TrendCard } from "./TrendCard";
 
 type Props = {
@@ -24,7 +25,13 @@ const sessionMax = (sets: Session["sets"]): string => {
   return best === null ? "" : `est. max ${formatKg(best.maxKg)} kg`;
 };
 
-const History = ({ sessions }: { readonly sessions: readonly Session[] }) => {
+/** The longest work set of a timed exercise, as `60s`. */
+const longest = (sets: Session["sets"]): string => {
+  const seconds = sets.filter(isWorkSet).flatMap(({ seconds }) => (seconds === null ? [] : [seconds]));
+  return seconds.length === 0 ? "–" : `${Math.max(...seconds)}s`;
+};
+
+const History = ({ exercise, sessions }: { readonly exercise: Exercise; readonly sessions: readonly Session[] }) => {
   const [window, setWindow] = useState<Window>(DEFAULT_WINDOW);
   const today = localToday();
   const within = sessions.filter(
@@ -36,13 +43,14 @@ const History = ({ sessions }: { readonly sessions: readonly Session[] }) => {
   const dateOf = new Map(sessions.flatMap(({ workout, sets }) => sets.map((set) => [set.id, workout.date] as const)));
   const records = repRecords(all);
   const best = bestEstimate(all);
+  const timed = exercise.measure === "seconds";
 
   return (
     <>
       <dl className="card standings">
         <div className="total">
-          <dt className="label">Est. max</dt>
-          <dd className="numeric">{best === null ? "–" : formatKg(best.maxKg)}</dd>
+          <dt className="label">{timed ? "Longest" : "Est. max"}</dt>
+          <dd className="numeric">{timed ? longest(all) : best === null ? "–" : formatKg(best.maxKg)}</dd>
         </div>
         <div>
           <dt className="label">Sessions</dt>
@@ -53,7 +61,7 @@ const History = ({ sessions }: { readonly sessions: readonly Session[] }) => {
           <dd className="numeric">{all.filter(isWorkSet).length}</dd>
         </div>
       </dl>
-      <TrendCard trend={fitted} window={window} onWindow={setWindow} />
+      {!timed && <TrendCard trend={fitted} exercise={exercise} window={window} onWindow={setWindow} />}
       {profile !== null && <RepProfileCard profile={profile} />}
       {records.length > 0 && (
         <section className="card">
@@ -70,7 +78,9 @@ const History = ({ sessions }: { readonly sessions: readonly Session[] }) => {
               {records.map(({ reps, set }) => (
                 <tr key={reps}>
                   <td className="numeric">{reps}</td>
-                  <td className="numeric">{formatKg(set.weightKg)} kg</td>
+                  <td className="numeric">
+                    {exercise.bodyweight ? formatWeight(set.weightKg, exercise) : `${formatKg(set.weightKg)} kg`}
+                  </td>
                   <td>{formatDay(dateOf.get(set.id) ?? "")}</td>
                 </tr>
               ))}
@@ -93,7 +103,7 @@ const History = ({ sessions }: { readonly sessions: readonly Session[] }) => {
                   <span className="set-chips numeric">
                     {sets.map((set) => (
                       <span key={set.id} className={isWorkSet(set) ? undefined : "warmup"}>
-                        {formatSet(set)}
+                        {formatSet(set, exercise)}
                       </span>
                     ))}
                   </span>
@@ -166,6 +176,11 @@ export const ExercisePage = ({ exercises, workouts, exerciseId }: Props) => {
             </option>
           ))}
         </select>
+        <StyleSelect
+          value={exercise}
+          measureFixed={sessions.length > 0}
+          onChange={(style) => actions.update(exercise, style)}
+        />
       </div>
       {sessions.length === 0 ? (
         <>
@@ -181,7 +196,7 @@ export const ExercisePage = ({ exercises, workouts, exerciseId }: Props) => {
           </ConfirmButton>
         </>
       ) : (
-        <History sessions={sessions} />
+        <History exercise={exercise} sessions={sessions} />
       )}
     </>
   );

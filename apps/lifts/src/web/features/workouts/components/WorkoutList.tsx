@@ -22,7 +22,7 @@ export const WorkoutList = ({ workouts }: { readonly workouts: readonly WorkoutD
                 return (
                   <span key={entry.id} className="workout-line">
                     <span>{entry.exercise.name}</span>
-                    <span className="numeric">{top === undefined ? "" : formatSet(top)}</span>
+                    <span className="numeric">{top === undefined ? "" : formatSet(top, entry.exercise)}</span>
                   </span>
                 );
               })}

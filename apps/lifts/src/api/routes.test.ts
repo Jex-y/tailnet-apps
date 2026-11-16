@@ -47,6 +47,8 @@ const exercise = (fields: Partial<Exercise> = {}): Exercise => ({
   name: "Squat",
   lift: null,
   weightStepKg: 2.5,
+  measure: "reps",
+  bodyweight: false,
   ...fields,
 });
 const workout = (fields: Partial<Workout> = {}): Workout => ({
@@ -71,6 +73,7 @@ const set = (entryId: string, fields: Partial<LiftSet> = {}): LiftSet => ({
   position: 0,
   weightKg: 140,
   reps: 5,
+  seconds: null,
   rpe: 8,
   kind: "work",
   loggedAt: NOW.toISOString(),

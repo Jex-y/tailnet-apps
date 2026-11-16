@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
-import type { LiftSet } from "../../../../contract";
-import type { EntryDetail } from "../../../../log";
+import type { EntryDetail, LoggedSet } from "../../../../log";
 import { estimatedMax, isRecord, isWorkSet } from "../../../../strength";
 import { ConfirmButton } from "../../../components/ConfirmButton";
 import { Icon } from "../../../components/Icon";
@@ -18,7 +17,7 @@ type Props = {
   /** The best estimated max of the exercise's last session, which each set is measured against. */
   readonly lastBestKg: number | null;
   /** Every set of the exercise in other workouts, for spotting a record. */
-  readonly before: readonly LiftSet[];
+  readonly before: readonly LoggedSet[];
   /** Where the exercise's trend puts its max today, before this workout. */
   readonly forecast: Forecast | null;
   /** The row the dock is working on. */
@@ -31,8 +30,8 @@ type Props = {
 };
 
 /**
- * An exercise as a dense table, a row a set: what was done in its place last time, the weight, reps and RPE, the max
- * it implies and how that compares with last time. Tapping a row hands it to the dock.
+ * An exercise as a dense table, a row a set: what was done in its place last time, the weight, reps (or seconds) and
+ * RPE, the max it implies and how that compares with last time. Tapping a row hands it to the dock.
  */
 export const EntryTable = ({
   entry,
@@ -56,6 +55,7 @@ export const EntryTable = ({
     }
   }, [selected]);
   const total = rows.length;
+  const { exercise } = entry;
 
   return (
     <section className="card entry-table" aria-label={entry.exercise.name}>
@@ -68,15 +68,15 @@ export const EntryTable = ({
       <div className="set-grid label" aria-hidden="true">
         <span>#</span>
         <span>Last</span>
-        <span>kg</span>
-        <span>Reps</span>
+        <span>{exercise.bodyweight ? "+kg" : "kg"}</span>
+        <span>{exercise.measure === "reps" ? "Reps" : "Secs"}</span>
         <span>RPE</span>
         <span>e1RM</span>
         <span>Δ</span>
       </div>
       <ol className="set-rows">
         {rows.map((row) => {
-          const { weightKg, reps, rpe, kind } = valuesOf(row);
+          const { weightKg, reps, seconds, rpe, kind } = valuesOf(row);
           const done = row.kind === "logged";
           const rating = done && row.set.id === ratingId;
           // Until it is rated a set would read as all-out, so its max waits for the rating.
@@ -97,15 +97,17 @@ export const EntryTable = ({
                 type="button"
                 className={classes.join(" ")}
                 aria-pressed={row.index === selected}
-                aria-label={`Set ${row.index + 1}${kind === "warmup" ? ", warm-up" : ""}: ${formatKg(weightKg)} kilograms for ${reps}${
+                aria-label={`Set ${row.index + 1}${kind === "warmup" ? ", warm-up" : ""}: ${formatKg(weightKg)} kilograms${
+                  exercise.bodyweight ? " added" : ""
+                } for ${reps ?? `${seconds} seconds`}${
                   done ? (rpe === null ? "" : ` at RPE ${rpe}`) : ", still to do"
                 }`}
                 onClick={() => onSelect(row.index)}
               >
                 <span className="set-number">{number}</span>
-                <span className="set-previous">{row.previous === null ? "–" : formatSet(row.previous)}</span>
+                <span className="set-previous">{row.previous === null ? "–" : formatSet(row.previous, exercise)}</span>
                 <span>{formatKg(weightKg)}</span>
-                <span>{reps}</span>
+                <span>{reps ?? seconds}</span>
                 <span className={rating ? "up" : undefined}>
                   {rating ? "?" : done && kind === "work" ? (rpe ?? "–") : ""}
                 </span>

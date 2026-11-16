@@ -60,28 +60,38 @@ export const programDetails = (plan: Plan, exercises: readonly Exercise[]): Prog
 
 /** What a percentage or RPE load is worked out from, and what it is rounded to. */
 export type LoadBasis = {
+  /** Of the whole load, bodyweight included for an exercise whose load includes it, as estimated maxes are. */
   readonly trainingMaxKg: number | null;
   /** The exercise's estimated max on the day. */
   readonly maxKg: number | null;
   readonly weightStepKg: number;
+  /**
+   * What the weight to lift goes on top of: the bodyweight on the day for an exercise whose load includes it, else
+   * zero. `null` while no bodyweight is known.
+   */
+  readonly bodyweightKg: number | null;
 };
 
 /** Down to a whole number of steps; the hundredths absorb float error such as 0.1 + 0.2. */
 export const roundDown = (kg: number, stepKg: number): number =>
   Math.round(Math.floor(Math.round((kg / stepKg) * 1e6) / 1e6) * stepKg * 100) / 100;
 
-/** The weight to lift, or `null` when the basis a load needs is missing. */
-export const resolveLoad = (load: Load, reps: number, basis: LoadBasis): number | null => {
+/**
+ * The weight to lift, on top of bodyweight for an exercise whose load includes it, or `null` when the basis a load
+ * needs is missing. An RPE load needs reps, which a timed prescription has none of.
+ */
+export const resolveLoad = (load: Load, reps: number | null, basis: LoadBasis): number | null => {
+  // Bodyweight alone may already be more than the load asks for, and nothing can be taken off it.
+  const onTop = (loadKg: number) =>
+    basis.bodyweightKg === null ? null : roundDown(Math.max(0, loadKg - basis.bodyweightKg), basis.weightStepKg);
   switch (load.kind) {
     case "kg":
       return load.kg;
     case "percent":
-      return basis.trainingMaxKg === null
-        ? null
-        : roundDown((basis.trainingMaxKg * load.percent) / 100, basis.weightStepKg);
+      return basis.trainingMaxKg === null ? null : onTop((basis.trainingMaxKg * load.percent) / 100);
     case "rpe": {
       const share = maxShare(reps, load.rpe);
-      return basis.maxKg === null || share === null ? null : roundDown(basis.maxKg * share, basis.weightStepKg);
+      return basis.maxKg === null || share === null ? null : onTop(basis.maxKg * share);
     }
   }
 };
@@ -103,10 +113,10 @@ export const steppedLoad = (load: Load, step: LoadStep): Load => {
   }
 };
 
-export const loadText = (load: Load): string => {
+export const loadText = (load: Load, { bodyweight }: Pick<Exercise, "bodyweight">): string => {
   switch (load.kind) {
     case "kg":
-      return `${load.kg} kg`;
+      return `${bodyweight ? "BW+" : ""}${load.kg} kg`;
     case "percent":
       return `${load.percent}%`;
     case "rpe":

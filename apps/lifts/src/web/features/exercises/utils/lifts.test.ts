@@ -1,25 +1,28 @@
 import { describe, expect, test } from "bun:test";
-import type { Exercise, LiftSet } from "../../../../contract";
-import type { WorkoutDetail } from "../../../../log";
+import type { Exercise } from "../../../../contract";
+import type { LoggedSet, WorkoutDetail } from "../../../../log";
 import { missingLifts, standings, summarise } from "./lifts";
 
-const squat: Exercise = { id: "squat", name: "Squat", lift: "squat", weightStepKg: 2.5 };
-const bench: Exercise = { id: "bench", name: "Bench press", lift: "bench", weightStepKg: 2.5 };
-const deadlift: Exercise = { id: "deadlift", name: "Deadlift", lift: "deadlift", weightStepKg: 2.5 };
-const curl: Exercise = { id: "curl", name: "Curl", lift: null, weightStepKg: 2.5 };
+const REPS = { measure: "reps", bodyweight: false } as const;
+const squat: Exercise = { id: "squat", name: "Squat", lift: "squat", weightStepKg: 2.5, ...REPS };
+const bench: Exercise = { id: "bench", name: "Bench press", lift: "bench", weightStepKg: 2.5, ...REPS };
+const deadlift: Exercise = { id: "deadlift", name: "Deadlift", lift: "deadlift", weightStepKg: 2.5, ...REPS };
+const curl: Exercise = { id: "curl", name: "Curl", lift: null, weightStepKg: 2.5, ...REPS };
 
-const set = (weightKg: number, reps: number): LiftSet => ({
+const set = (weightKg: number, reps: number): LoggedSet => ({
   id: crypto.randomUUID(),
   entryId: "entry",
   position: 0,
   weightKg,
+  loadKg: weightKg,
   reps,
+  seconds: null,
   rpe: 10,
   kind: "work",
   loggedAt: "2026-10-01T18:00:00.000Z",
 });
 
-const workout = (date: string, trained: readonly (readonly [Exercise, LiftSet[]])[]): WorkoutDetail => ({
+const workout = (date: string, trained: readonly (readonly [Exercise, LoggedSet[]])[]): WorkoutDetail => ({
   id: date,
   date,
   finishedAt: null,

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { LiftSet } from "../../../../contract";
+import type { Exercise } from "../../../../contract";
+import type { LoggedSet } from "../../../../log";
 import { ConfirmButton } from "../../../components/ConfirmButton";
 import { Icon } from "../../../components/Icon";
 import {
@@ -35,7 +36,7 @@ export type DockMode =
   | {
       readonly kind: "rate";
       readonly label: string;
-      readonly set: LiftSet;
+      readonly set: LoggedSet;
       readonly since: string | null;
       /** The set the big button logs next, if there is one. */
       readonly next: SetValues | null;
@@ -48,15 +49,26 @@ export type DockMode =
   | {
       readonly kind: "edit";
       readonly label: string;
-      readonly set: LiftSet;
+      readonly set: LoggedSet;
       readonly onKind: (kind: SetValues["kind"]) => void;
       readonly onSave: (figures: Figures) => void;
       readonly onRemove: () => void;
     }
   | { readonly kind: "idle"; readonly label: string; readonly onAddSet: () => void };
 
-const UNITS: Record<Field, string> = { weightKg: "kg", reps: "reps", rpe: "RPE" };
-const NAMES: Record<Field, string> = { weightKg: "Weight", reps: "Reps", rpe: "RPE" };
+/** How the exercise being logged is loaded and counted, which names the fields. */
+type Counting = Pick<Exercise, "measure" | "bodyweight">;
+
+const unitsOf = ({ measure, bodyweight }: Counting): Record<Field, string> => ({
+  weightKg: bodyweight ? "+kg" : "kg",
+  count: measure === "reps" ? "reps" : "s",
+  rpe: "RPE",
+});
+const namesOf = ({ measure, bodyweight }: Counting): Record<Field, string> => ({
+  weightKg: bodyweight ? "Weight added" : "Weight",
+  count: measure === "reps" ? "Reps" : "Seconds",
+  rpe: "RPE",
+});
 
 /** The pad, laid out as a calculator's: three rows of digits, with delete, the point and zero down the right. */
 const PAD: readonly Key[] = ["7", "8", "9", "back", "4", "5", "6", ".", "1", "2", "3", "0"];
@@ -100,7 +112,7 @@ const KindToggle = ({
  * system keyboard never covers the page: tap a field, type, done. Its height never changes and its big button never
  * moves, so a set can be logged by feel. It takes its mode afresh when given a new `key`.
  */
-export const Dock = ({ mode }: { readonly mode: DockMode }) => {
+export const Dock = ({ mode, exercise }: { readonly mode: DockMode; readonly exercise: Counting }) => {
   const [draft, setDraft] = useState(() => startingDraft(mode));
   const [active, setActive] = useState<Field>("weightKg");
   const [fresh, setFresh] = useState(true);
@@ -126,7 +138,7 @@ export const Dock = ({ mode }: { readonly mode: DockMode }) => {
     if (draft === null) {
       return;
     }
-    const parsed = parseDraft(draft);
+    const parsed = parseDraft(draft, exercise.measure);
     if (parsed.ok) {
       use(parsed.values);
       return;
@@ -175,12 +187,17 @@ export const Dock = ({ mode }: { readonly mode: DockMode }) => {
   }, []);
 
   const shown = (field: Field) => draft?.[field] ?? "";
+  const [units, names] = [unitsOf(exercise), namesOf(exercise)];
+  const weight = shown("weightKg") || "–";
+  const count = shown("count") || "–";
   const logLabel =
     mode.kind === "edit"
       ? "Save"
       : mode.kind === "idle" || (mode.kind === "rate" && mode.next === null)
         ? "Add a set"
-        : `Done · ${shown("weightKg") || "–"} × ${shown("reps") || "–"}`;
+        : `Done · ${exercise.bodyweight ? (weight === "0" ? "BW" : `BW+${weight}`) : weight} × ${count}${
+            exercise.measure === "seconds" && count !== "–" ? "s" : ""
+          }`;
 
   return (
     <section className={`dock ${mode.kind}`} aria-label="Set controls">
@@ -211,13 +228,13 @@ export const Dock = ({ mode }: { readonly mode: DockMode }) => {
               className="dock-field numeric"
               aria-pressed={typing && field === active}
               aria-invalid={invalid.includes(field)}
-              aria-label={`${NAMES[field]}${mode.kind === "rate" ? " of the next set" : ""}: ${shown(field) || "none"}`}
+              aria-label={`${names[field]}${mode.kind === "rate" ? " of the next set" : ""}: ${shown(field) || "none"}`}
               onClick={() => choose(field)}
             >
               <span className={typing && field === active && fresh ? "dock-value fresh" : "dock-value"}>
                 {shown(field) || "–"}
               </span>
-              <span className="dock-unit">{UNITS[field]}</span>
+              <span className="dock-unit">{units[field]}</span>
             </button>
           ))}
         </div>

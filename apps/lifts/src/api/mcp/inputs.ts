@@ -1,6 +1,17 @@
 import { HttpError } from "@apps/core";
 import { z } from "zod";
-import { Entry, LiftSet, Load, Prescription, Program, ProgramDay, ProgramExercise, TrainingMax } from "../../contract";
+import {
+  Entry,
+  LiftSet,
+  Load,
+  Prescription,
+  Program,
+  ProgramDay,
+  ProgramExercise,
+  Reps,
+  Seconds,
+  TrainingMax,
+} from "../../contract";
 
 export const round = (value: number) => Math.round(value * 10) / 10;
 
@@ -13,11 +24,15 @@ export const ProgramId = z.uuid().describe("The program's id, from list_programs
 export const SessionId = z.uuid().describe("The scheduled session's id, from get_schedule");
 export const ProgramDayId = z.uuid().describe("The id of a day in a program, from get_program");
 
+const REPS = "For an exercise counted in reps";
+const SECONDS = "For a timed exercise";
+
 export const PrescriptionInput = z.object({
   sets: Prescription.shape.sets.default(1),
-  reps: Prescription.shape.reps,
+  reps: Prescription.shape.reps.default(null).describe(REPS),
+  seconds: Prescription.shape.seconds.default(null).describe(SECONDS),
   load: Load.describe(
-    "kg: a fixed weight; percent: of the program's training max for the exercise; rpe: worked out from the exercise's estimated max on the day",
+    "kg: a fixed weight, on top of bodyweight for a bodyweight exercise; percent: of the program's training max for the exercise; rpe: worked out from the exercise's estimated max on the day, for reps only",
   ),
   kind: Prescription.shape.kind.default("work"),
 });
@@ -41,8 +56,9 @@ export const TrainingMaxInput = z.object({ exerciseId: ExerciseId, kg: TrainingM
 export const ProgramFields = { name: Program.shape.name, notes: Program.shape.notes };
 
 export const SetInput = z.object({
-  weightKg: LiftSet.shape.weightKg,
-  reps: LiftSet.shape.reps,
+  weightKg: LiftSet.shape.weightKg.describe("On top of bodyweight for a bodyweight exercise, so 0 for none"),
+  reps: Reps.nullable().default(null).describe(REPS),
+  seconds: Seconds.nullable().default(null).describe(SECONDS),
   rpe: LiftSet.shape.rpe.default(null),
   kind: LiftSet.shape.kind.default("work"),
 });

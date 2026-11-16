@@ -7,10 +7,11 @@ import { DEFAULT_WINDOW, trend, trendOver } from "../../../../trend";
 import { ConfirmButton } from "../../../components/ConfirmButton";
 import { Icon } from "../../../components/Icon";
 import { useNow } from "../../../hooks/useNow";
-import { formatDay, formatElapsed, formatKg } from "../../../utils/format";
+import { formatDay, formatElapsed, formatKg, formatSet } from "../../../utils/format";
 import { useWorkoutActions } from "../api/workouts";
 import {
   doneRows,
+  firstSet,
   type Intent,
   lastSession,
   NO_INTENT,
@@ -34,9 +35,6 @@ type Props = {
 };
 
 const Bodyweight = Workout.shape.bodyweightKg.unwrap();
-
-/** The empty bar for five, for a set added to an exercise with nothing logged. */
-const FIRST_SET: SetValues = { weightKg: 20, reps: 5, rpe: null, kind: "work" };
 
 /** Time since the first set, and the rest since the last, ticking on their own so the page around them does not. */
 const SessionClock = ({ first, last }: { readonly first: string | null; readonly last: string | null }) => {
@@ -77,7 +75,9 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
       template,
       intent,
       history,
-      rows: underWay ? openRows(entry.sets, template, intent) : doneRows(entry.sets, template),
+      rows: underWay
+        ? openRows(entry.sets, template, intent, firstSet(entry.exercise))
+        : doneRows(entry.sets, template),
       before: history.flatMap((session) => session.sets),
       lastBestKg: bestEstimate(template)?.maxKg ?? null,
     };
@@ -112,11 +112,9 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
   };
   const log = (plan: Plan, row: Extract<Row, { kind: "planned" }>, figures: Figures) => {
     const values = { ...row.values, ...figures };
-    // A weight or rep count typed in carries down to the sets still to do that matched it.
-    setIntent(
-      plan.entry.id,
-      withChange(plan.rows, plan.intent, row.index, { weightKg: values.weightKg, reps: values.reps }),
-    );
+    // A weight, rep count or time typed in carries down to the sets still to do that matched it.
+    const { weightKg, reps, seconds } = values;
+    setIntent(plan.entry.id, withChange(plan.rows, plan.intent, row.index, { weightKg, reps, seconds }));
     const id = actions.addSet(plan.entry, values, row.index);
     // A work set is asked its RPE, unless one was typed in with it.
     setRatingId(values.kind === "work" && values.rpe === null ? id : null);
@@ -132,7 +130,7 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
       return;
     }
     const last = plan.rows.at(-1);
-    actions.addSet(plan.entry, last === undefined ? FIRST_SET : { ...valuesOf(last), rpe: null });
+    actions.addSet(plan.entry, last === undefined ? firstSet(plan.entry.exercise) : { ...valuesOf(last), rpe: null });
     setSelection({ entryId: plan.entry.id, index: plan.rows.length });
   };
   const remove = (plan: Plan, set: LiftSet, index: number) => {
@@ -164,11 +162,13 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
   const label = (plan: Plan, row: Row) =>
     `${plan.entry.exercise.name} · ${row.kind === "logged" ? "editing " : ""}${setName(plan.rows, row.index)}`;
   const rowKey = (plan: Plan, row: Row) => `${plan.entry.id}:${row.index}`;
-  const dock = ((): { readonly key: string; readonly mode: DockMode } | null => {
+  const dock = ((): { readonly key: string; readonly mode: DockMode; readonly exercise: Exercise } | null => {
     if (picked !== undefined && pickedRow !== undefined) {
+      const { exercise } = picked.entry;
       return pickedRow.kind === "logged"
         ? {
             key: `edit:${pickedRow.set.id}`,
+            exercise,
             mode: {
               kind: "edit",
               label: label(picked, pickedRow),
@@ -183,6 +183,7 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
           }
         : {
             key: rowKey(picked, pickedRow),
+            exercise,
             mode: {
               kind: "ready",
               label: label(picked, pickedRow),
@@ -195,13 +196,15 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
     if (current === null) {
       return null;
     }
+    const { exercise } = current.entry;
     if (rated !== undefined) {
       return {
         // Keyed as the set it logs next, so figures typed for it outlast the question.
         key: next === null ? "rate" : rowKey(current, next),
+        exercise,
         mode: {
           kind: "rate",
-          label: `How hard was ${formatKg(rated.set.weightKg)} × ${rated.set.reps}? · ${rated.plan.entry.exercise.name}`,
+          label: `How hard was ${formatSet(rated.set, rated.plan.entry.exercise)}? · ${rated.plan.entry.exercise.name}`,
           set: rated.set,
           since: loggedTimes.at(-1) ?? null,
           next: next?.values ?? null,
@@ -218,6 +221,7 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
     return next === null
       ? {
           key: "idle",
+          exercise,
           mode: {
             kind: "idle",
             label: `${current.entry.exercise.name} · all sets done`,
@@ -226,6 +230,7 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
         }
       : {
           key: rowKey(current, next),
+          exercise,
           mode: {
             kind: "ready",
             label: label(current, next),
@@ -321,7 +326,7 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
             <button key={entry.id} type="button" className="card entry-folded numeric" onClick={() => choose(entry.id)}>
               <Icon name="check" />
               <strong>{entry.exercise.name}</strong>
-              <span className="muted">{summariseSets(entry.sets) || "No work sets"}</span>
+              <span className="muted">{summariseSets(entry.sets, entry.exercise) || "No work sets"}</span>
               <span>{best === null ? "" : formatKg(best.maxKg)}</span>
               {records.some((record) => record.id === entry.id) && <span className="pr">PR</span>}
             </button>
@@ -331,7 +336,7 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
           <button key={entry.id} type="button" className="entry-next numeric" onClick={() => choose(entry.id)}>
             {at === currentAt + 1 && <span className="label">Next</span>}
             <strong>{entry.exercise.name}</strong>
-            <span className="muted">{summariseSets(plan.template) || "New"}</span>
+            <span className="muted">{summariseSets(plan.template, entry.exercise) || "New"}</span>
           </button>
         );
       })}
@@ -408,7 +413,7 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
         </ConfirmButton>
       </section>
 
-      {dock !== null && <Dock key={dock.key} mode={dock.mode} />}
+      {dock !== null && <Dock key={dock.key} mode={dock.mode} exercise={dock.exercise} />}
     </>
   );
 };

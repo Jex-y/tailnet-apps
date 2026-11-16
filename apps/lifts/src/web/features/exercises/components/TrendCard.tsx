@@ -1,9 +1,11 @@
+import type { Exercise } from "../../../../contract";
 import { type Trend, WINDOWS, type Window } from "../../../../trend";
 import { formatChange, formatKg } from "../../../utils/format";
 import { TrendChart } from "./TrendChart";
 
 type Props = {
   readonly trend: Trend;
+  readonly exercise: Pick<Exercise, "bodyweight">;
   readonly window: Window;
   readonly onWindow: (window: Window) => void;
 };
@@ -18,7 +20,7 @@ const interval = (value: number, halfWidth: number, format: (value: number) => s
   `${format(value - halfWidth)} to ${format(value + halfWidth)}`;
 
 /** The fitted trend of an exercise's estimated max, its uncertainty, and whether the latest session stands out. */
-export const TrendCard = ({ trend, window, onWindow }: Props) => {
+export const TrendCard = ({ trend, exercise, window, onWindow }: Props) => {
   const { fit, latest } = trend;
 
   return (
@@ -52,7 +54,7 @@ export const TrendCard = ({ trend, window, onWindow }: Props) => {
               {formatChange(fit.slope)}/wk
             </span>
           </p>
-          <TrendChart trend={trend} weeks={window.weeks} />
+          <TrendChart trend={trend} exercise={exercise} weeks={window.weeks} />
           <dl className="stats numeric">
             <div>
               <dt>Slope, 95% CI</dt>

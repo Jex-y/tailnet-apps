@@ -1,16 +1,31 @@
-import type { LiftSet, Workout } from "../../../../contract";
-import { byPosition, type Session, sessionsOf, type WorkoutDetail } from "../../../../log";
+import type { Exercise, LiftSet, Workout } from "../../../../contract";
+import { byPosition, type LoggedSet, type Session, sessionsOf, type WorkoutDetail } from "../../../../log";
 
-export type SetValues = Pick<LiftSet, "weightKg" | "reps" | "rpe" | "kind">;
+export type SetValues = Pick<LiftSet, "weightKg" | "reps" | "seconds" | "rpe" | "kind">;
 
 /** Just what a set's values are, without the identity and place of the set they were read from. */
-export const setValues = ({ weightKg, reps, rpe, kind }: SetValues): SetValues => ({ weightKg, reps, rpe, kind });
+export const setValues = ({ weightKg, reps, seconds, rpe, kind }: SetValues): SetValues => ({
+  weightKg,
+  reps,
+  seconds,
+  rpe,
+  kind,
+});
 
 /** A row's values: those logged, or those planned. */
 export const valuesOf = (row: Row): SetValues => (row.kind === "logged" ? setValues(row.set) : row.values);
 
-/** The empty bar for five, when there is nothing to go on. */
-const FIRST_EVER: SetValues = { weightKg: 20, reps: 5, rpe: null, kind: "work" };
+/**
+ * A first set when there is nothing to go on: the empty bar for five, or bodyweight alone, or held for half a
+ * minute for a timed exercise.
+ */
+export const firstSet = ({ measure, bodyweight }: Pick<Exercise, "measure" | "bodyweight">): SetValues => ({
+  weightKg: bodyweight ? 0 : 20,
+  reps: measure === "reps" ? 5 : null,
+  seconds: measure === "seconds" ? 30 : null,
+  rpe: null,
+  kind: "work",
+});
 
 /** The most recent other workout, no later than this one, in which the exercise was trained. */
 export const lastSession = (
@@ -37,13 +52,19 @@ export const NO_INTENT: Intent = { extra: 0, changes: new Map() };
  * session, to lift against.
  */
 export type Row =
-  | { readonly kind: "logged"; readonly index: number; readonly set: LiftSet; readonly previous: LiftSet | null }
-  | { readonly kind: "planned"; readonly index: number; readonly values: SetValues; readonly previous: LiftSet | null };
+  | { readonly kind: "logged"; readonly index: number; readonly set: LoggedSet; readonly previous: LoggedSet | null }
+  | {
+      readonly kind: "planned";
+      readonly index: number;
+      readonly values: SetValues;
+      readonly previous: LoggedSet | null;
+    };
 
-/** A set to do is what was done in its place last time; its RPE is left to be felt. */
-const planned = ({ weightKg, reps, kind }: SetValues): SetValues => ({
+/** A set to do is what was done in its place last time, a miss made good; its RPE is left to be felt. */
+const planned = ({ weightKg, reps, seconds, kind }: SetValues): SetValues => ({
   weightKg,
-  reps: Math.max(reps, 1),
+  reps: reps === null ? null : Math.max(reps, 1),
+  seconds: seconds === null ? null : Math.max(seconds, 1),
   rpe: null,
   kind,
 });
@@ -52,10 +73,15 @@ const planned = ({ weightKg, reps, kind }: SetValues): SetValues => ({
  * An exercise's rows in a workout under way. Sets done sit where they were logged; around them are the sets still
  * to do, which follow last session's set for set until the lifter changes one, and number at least one. Where a set
  * done moved on from last session's weight, the sets to do that shared that weight move with it. A row beyond last
- * session's repeats the row above it.
+ * session's repeats the row above it, and the first ever is `first`.
  */
-export const openRows = (logged: readonly LiftSet[], lastTime: readonly LiftSet[], intent: Intent): Row[] => {
-  const placed = new Map<number, LiftSet>();
+export const openRows = (
+  logged: readonly LoggedSet[],
+  lastTime: readonly LoggedSet[],
+  intent: Intent,
+  first: SetValues,
+): Row[] => {
+  const placed = new Map<number, LoggedSet>();
   let next = 0;
   for (const set of logged.toSorted(byPosition)) {
     const index = Math.max(set.position, next);
@@ -68,7 +94,7 @@ export const openRows = (logged: readonly LiftSet[], lastTime: readonly LiftSet[
   // What each of last session's weights became in the sets done so far, by kind.
   const moved = new Map<string, number>();
   const was = ({ kind, weightKg }: SetValues) => `${kind} ${weightKg}`;
-  let above: SetValues = FIRST_EVER;
+  let above = first;
   for (let index = 0; index < count; index++) {
     const set = placed.get(index);
     const previous = lastTime[index] ?? null;
@@ -91,12 +117,12 @@ export const openRows = (logged: readonly LiftSet[], lastTime: readonly LiftSet[
 };
 
 /** The rows of a finished workout: the sets done, in order, each against last session's. */
-export const doneRows = (logged: readonly LiftSet[], lastTime: readonly LiftSet[]): Row[] =>
+export const doneRows = (logged: readonly LoggedSet[], lastTime: readonly LoggedSet[]): Row[] =>
   logged.toSorted(byPosition).map((set, index) => ({ kind: "logged", index, set, previous: lastTime[index] ?? null }));
 
 /**
- * The intent after changing a set still to do. A changed weight or rep count carries down to the sets to do below
- * it that matched the old one, so raising the first working set raises the rest.
+ * The intent after changing a set still to do. A changed weight, rep count or time carries down to the sets to do
+ * below it that matched the old one, so raising the first working set raises the rest.
  */
 export const withChange = (rows: readonly Row[], intent: Intent, index: number, patch: Partial<SetValues>): Intent => {
   const target = rows.find((row) => row.index === index);
@@ -113,6 +139,7 @@ export const withChange = (rows: readonly Row[], intent: Intent, index: number, 
       ...(patch.weightKg !== undefined &&
         row.values.weightKg === target.values.weightKg && { weightKg: patch.weightKg }),
       ...(patch.reps !== undefined && row.values.reps === target.values.reps && { reps: patch.reps }),
+      ...(patch.seconds !== undefined && row.values.seconds === target.values.seconds && { seconds: patch.seconds }),
     };
     if (Object.keys(carried).length > 0) {
       changes.set(row.index, { ...row.values, ...carried });

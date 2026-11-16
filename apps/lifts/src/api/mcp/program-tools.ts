@@ -17,7 +17,7 @@ import {
   read,
   TrainingMaxInput,
 } from "./inputs";
-import { briefProgram, fullProgram, maxesOn } from "./render";
+import { basisOn, briefProgram, fullProgram } from "./render";
 
 const dayMutations = (programId: string, { exercises, ...day }: ProgramDayInput, id: string, position: number) => [
   { type: "programDay.put", row: { id, programId, position, ...day } } satisfies Mutation,
@@ -56,7 +56,7 @@ export const registerProgramTools = ({ service, now }: LiftsMcpDeps, server: Mcp
   const answer = async (programId: string) => {
     const { programs, log } = await programsOf();
     const program = programs.find((other) => other.id === programId) ?? notFound();
-    return fullProgram(program, maxesOn(log, today()));
+    return fullProgram(program, basisOn(log, today()));
   };
 
   server.registerTool(
@@ -187,12 +187,12 @@ export const registerProgramTools = ({ service, now }: LiftsMcpDeps, server: Mcp
             exercises: day.exercises.map((slot) => ({
               exerciseId: slot.exerciseId,
               notes: slot.notes,
-              prescriptions: slot.prescriptions.map(({ sets, reps, kind, load }) => {
+              prescriptions: slot.prescriptions.map(({ sets, reps, seconds, kind, load }) => {
                 const stepped = Load.safeParse(step === undefined || kind !== "work" ? load : steppedLoad(load, step));
                 if (!stepped.success) {
                   throw new HttpError(400, `That step takes a load out of range: ${z.prettifyError(stepped.error)}`);
                 }
-                return { sets, reps, kind, load: stepped.data };
+                return { sets, reps, seconds, kind, load: stepped.data };
               }),
             })),
           }),

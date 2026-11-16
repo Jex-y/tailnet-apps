@@ -22,6 +22,13 @@
       "when": 1794840462731,
       "tag": "0002_schedule_programs",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794844940103,
+      "tag": "0003_timed_and_bodyweight",
+      "breakpoints": true
     }
   ]
 }

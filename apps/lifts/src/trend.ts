@@ -1,13 +1,12 @@
-import type { LiftSet } from "./contract";
 import { type LinearFit, linearFit } from "./fit";
-import type { Session } from "./log";
+import type { LoggedSet, Session } from "./log";
 import { bestEstimate } from "./strength";
 
 export type TrendPoint = {
   readonly date: string;
   readonly maxKg: number;
   /** The set the estimate comes from. */
-  readonly set: LiftSet;
+  readonly set: LoggedSet;
 };
 
 /** The best estimated max of each session that has one, oldest first. */
