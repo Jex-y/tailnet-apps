@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { LiftSet } from "../../../../contract";
 import type { Row } from "./plan";
-import { currentEntry, nextPlanned, stepReps, stepWeight, summariseSets } from "./session";
+import { currentEntry, nextPlanned, setName, summariseSets } from "./session";
 
 type Shorthand = Pick<LiftSet, "weightKg" | "reps" | "rpe" | "kind">;
 const work = (weightKg: number, reps: number, rpe: number | null = null): Shorthand => ({
@@ -31,17 +31,6 @@ const planned = (index: number): Row => ({
   index,
   values: { weightKg: 100, reps: 5, rpe: null, kind: "work" },
   previous: null,
-});
-
-describe("stepWeight", () => {
-  test("steps on the 10 g grid and stays within what the log takes", () => {
-    expect(stepWeight(0.1, 0.2)).toBe(0.3);
-    expect(stepWeight(100, -2.5)).toBe(97.5);
-    expect(stepWeight(2.5, -5)).toBe(0);
-    expect(stepWeight(999, 5)).toBe(1000);
-    expect(stepReps(0, -1)).toBe(0);
-    expect(stepReps(8, 1)).toBe(9);
-  });
 });
 
 describe("currentEntry", () => {
@@ -75,5 +64,18 @@ describe("summariseSets", () => {
     );
     expect(summariseSets([work(100, 8, 8)])).toBe("100×8 @8");
     expect(summariseSets([{ ...work(60, 5), kind: "warmup" }])).toBe("");
+  });
+});
+
+describe("setName", () => {
+  test("counts work sets among themselves and names warm-ups", () => {
+    const warmup: Row = {
+      kind: "planned",
+      index: 0,
+      values: { weightKg: 60, reps: 5, rpe: null, kind: "warmup" },
+      previous: null,
+    };
+    const rows = [warmup, { ...logged(1), index: 1 }, planned(2)];
+    expect(rows.map((row) => setName(rows, row.index))).toEqual(["warm-up", "set 1", "set 2"]);
   });
 });

@@ -22,8 +22,8 @@ import {
   valuesOf,
   withChange,
 } from "../utils/plan";
-import { currentEntry, nextPlanned, summariseSets } from "../utils/session";
-import { Dock, type DockMode } from "./Dock";
+import { currentEntry, nextPlanned, setName, summariseSets } from "../utils/session";
+import { Dock, type DockMode, type Figures } from "./Dock";
 import { EntryTable, type Forecast } from "./EntryTable";
 import { ExerciseSheet } from "./ExerciseSheet";
 import { useRest } from "./RestTimer";
@@ -111,9 +111,16 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
       setIntent(plan.entry.id, withChange(plan.rows, plan.intent, row.index, patch));
     }
   };
-  const log = (plan: Plan, row: Extract<Row, { kind: "planned" }>) => {
-    const id = actions.addSet(plan.entry, row.values, row.index);
-    setRatingId(row.values.kind === "work" ? id : null);
+  const log = (plan: Plan, row: Extract<Row, { kind: "planned" }>, figures: Figures) => {
+    const values = { ...row.values, ...figures };
+    // A weight or rep count typed in carries down to the sets still to do that matched it.
+    setIntent(
+      plan.entry.id,
+      withChange(plan.rows, plan.intent, row.index, { weightKg: values.weightKg, reps: values.reps }),
+    );
+    const id = actions.addSet(plan.entry, values, row.index);
+    // A work set is asked its RPE, unless one was typed in with it.
+    setRatingId(values.kind === "work" && values.rpe === null ? id : null);
     setSelection(null);
     if (chosen === plan.entry.id && !plan.rows.some((other) => other.kind === "planned" && other.index > row.index)) {
       setChosen(null);
@@ -156,24 +163,34 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
   };
 
   const label = (plan: Plan, row: Row) =>
-    `${plan.entry.exercise.name} · ${row.kind === "logged" ? "editing " : ""}set ${row.index + 1}${valuesOf(row).kind === "warmup" ? " (warm-up)" : ""}`;
-  const dock = ((): DockMode | null => {
+    `${plan.entry.exercise.name} · ${row.kind === "logged" ? "editing " : ""}${setName(plan.rows, row.index)}`;
+  const rowKey = (plan: Plan, row: Row) => `${plan.entry.id}:${row.index}`;
+  const dock = ((): { readonly key: string; readonly mode: DockMode } | null => {
     if (picked !== undefined && pickedRow !== undefined) {
       return pickedRow.kind === "logged"
         ? {
-            kind: "edit",
-            label: label(picked, pickedRow),
-            set: pickedRow.set,
-            onChange: (patch) => change(picked, pickedRow, patch),
-            onRemove: () => remove(picked, pickedRow.set, pickedRow.index),
-            onClose: () => setSelection(null),
+            key: `edit:${pickedRow.set.id}`,
+            mode: {
+              kind: "edit",
+              label: label(picked, pickedRow),
+              set: pickedRow.set,
+              onKind: (kind) => change(picked, pickedRow, { kind }),
+              onSave: (figures) => {
+                actions.updateSet(pickedRow.set, figures);
+                setSelection(null);
+              },
+              onRemove: () => remove(picked, pickedRow.set, pickedRow.index),
+            },
           }
         : {
-            kind: "ready",
-            label: label(picked, pickedRow),
-            values: pickedRow.values,
-            onChange: (patch) => change(picked, pickedRow, patch),
-            onLog: () => log(picked, pickedRow),
+            key: rowKey(picked, pickedRow),
+            mode: {
+              kind: "ready",
+              label: label(picked, pickedRow),
+              values: pickedRow.values,
+              onKind: (kind) => change(picked, pickedRow, { kind }),
+              onLog: (figures) => log(picked, pickedRow, figures),
+            },
           };
     }
     if (current === null) {
@@ -181,34 +198,48 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
     }
     if (rated !== undefined) {
       return {
-        kind: "rate",
-        label: `How hard was ${formatKg(rated.set.weightKg)} × ${rated.set.reps}? · ${rated.plan.entry.exercise.name}`,
-        set: rated.set,
-        since: loggedTimes.at(-1) ?? null,
-        next: next?.values ?? null,
-        onRate: (rpe) => {
-          actions.updateSet(rated.set, { rpe });
-          setRatingId(null);
+        // Keyed as the set it logs next, so figures typed for it outlast the question.
+        key: next === null ? "rate" : rowKey(current, next),
+        mode: {
+          kind: "rate",
+          label: `How hard was ${formatKg(rated.set.weightKg)} × ${rated.set.reps}? · ${rated.plan.entry.exercise.name}`,
+          set: rated.set,
+          since: loggedTimes.at(-1) ?? null,
+          next: next?.values ?? null,
+          onRate: (rpe) => {
+            actions.updateSet(rated.set, { rpe });
+            setRatingId(null);
+          },
+          onSkip: () => setRatingId(null),
+          onLog: (figures) => next !== null && log(current, next, figures),
+          onAddSet: () => addSet(current),
         },
-        onSkip: () => setRatingId(null),
-        onLog: () => next !== null && log(current, next),
-        onAddSet: () => addSet(current),
       };
     }
     return next === null
-      ? { kind: "idle", label: `${current.entry.exercise.name} · all sets done`, onAddSet: () => addSet(current) }
+      ? {
+          key: "idle",
+          mode: {
+            kind: "idle",
+            label: `${current.entry.exercise.name} · all sets done`,
+            onAddSet: () => addSet(current),
+          },
+        }
       : {
-          kind: "ready",
-          label: label(current, next),
-          values: next.values,
-          onChange: (patch) => change(current, next, patch),
-          onLog: () => log(current, next),
+          key: rowKey(current, next),
+          mode: {
+            kind: "ready",
+            label: label(current, next),
+            values: next.values,
+            onKind: (kind) => change(current, next, { kind }),
+            onLog: (figures) => log(current, next, figures),
+          },
         };
   })();
   const selectedIn = (plan: Plan) =>
     selection?.entryId === plan.entry.id
       ? selection.index
-      : dock?.kind === "ready" && current === plan && next !== null
+      : dock?.mode.kind === "ready" && current === plan && next !== null
         ? next.index
         : null;
 
@@ -278,7 +309,7 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
               before={plan.before}
               forecast={forecast(plan)}
               selected={selectedIn(plan)}
-              ratingId={dock?.kind === "rate" ? dock.set.id : null}
+              ratingId={dock?.mode.kind === "rate" ? dock.mode.set.id : null}
               onSelect={(index) => select(plan, index)}
               onAddSet={() => addSet(plan)}
               actions={actions}
@@ -378,7 +409,7 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
         </ConfirmButton>
       </section>
 
-      {dock !== null && <Dock mode={dock} />}
+      {dock !== null && <Dock key={dock.key} mode={dock.mode} />}
     </>
   );
 };

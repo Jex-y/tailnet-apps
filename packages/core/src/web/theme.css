@@ -9,13 +9,12 @@
 @import "./themes/editorial.css";
 @import "./themes/y2k.css";
 @import "./themes/clay.css";
-@import "./themes/paper.css";
 
 /*
  * Apps read only the theme tokens, listed in themes/glass.css. `--edge` outlines a surface and `--border` separates
  * rows within one; `--surface-raised` is an opaque surface for anything that overlaps other content; `--chrome` is the
  * sticky header and tab bar, which content scrolls beneath; a label is small navigational or status text; a figure is
- * a number or measurement. `--hue` is the accent hue every theme but Paper derives its accent from.
+ * a number or measurement. `--hue` is the accent hue every theme derives its accent from.
  */
 :root {
   --hue: 185;

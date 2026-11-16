@@ -191,13 +191,13 @@ describe("saved theme", () => {
   });
 
   test("refuses a theme that does not exist, and anonymous viewers", async () => {
-    expect((await choose(uniqueLogin(), "vellum")).status).toBe(400);
+    expect((await choose(uniqueLogin(), "paper")).status).toBe(400);
     expect((await request("/shell/api/theme")).status).toBe(401);
   });
 
   test("a saved theme that has since been removed reads as no choice", async () => {
     const me = uniqueLogin();
-    await db.insert(themes).values({ login: me, theme: "vellum" });
+    await db.insert(themes).values({ login: me, theme: "paper" });
     expect(await theme(me)).toEqual({ theme: null });
   });
 });

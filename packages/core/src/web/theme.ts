@@ -9,7 +9,6 @@ export const THEMES = [
   { id: "editorial", name: "Editorial", description: "A printed page: newsprint, a serif throughout, hairline rules." },
   { id: "y2k", name: "Y2K", description: "Glossy pills and pixel labels under a periwinkle sky." },
   { id: "clay", name: "Clay", description: "Soft pastel putty, pillowy rounded cards you want to press." },
-  { id: "paper", name: "Paper", description: "Warm off-white with cobalt, light even at night, dense tables." },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]["id"];

@@ -1,7 +1,7 @@
 /*
- * Paper: warm off-white with one cobalt accent, for bright rooms and daylight where dark themes wash out. Light
- * whatever the system scheme. Set in the system face, with figures in tabular numerals, and dense enough for tables.
- * Unlike the other themes its accent does not follow `--hue`: the cobalt is the one colour the palette is built round.
+ * Paper, Lifts' own look: warm off-white with one cobalt accent, for a bright gym where dark themes wash out. Light
+ * whatever the system scheme, and pinned on the page rather than chosen, so it never follows the other apps' theme.
+ * It sets every token the shared themes do, and is imported after them so it wins over the default on `:root`.
  */
 [data-theme="paper"] {
   color-scheme: light;

@@ -8,6 +8,7 @@ import { Icon } from "../../../components/Icon";
 import { formatChange, formatKg, formatSet } from "../../../utils/format";
 import type { WorkoutActions } from "../api/workouts";
 import { type Row, valuesOf } from "../utils/plan";
+import { setName } from "../utils/session";
 
 export type Forecast = { readonly maxKg: number; readonly halfWidth: number };
 
@@ -55,8 +56,6 @@ export const EntryTable = ({
     }
   }, [selected]);
   const total = rows.length;
-  // Work sets count 1, 2, 3 among themselves; warm-ups are marked W.
-  const workNumbers = rows.map((_, at) => rows.slice(0, at + 1).filter((row) => valuesOf(row).kind === "work").length);
 
   return (
     <section className="card entry-table" aria-label={entry.exercise.name}>
@@ -64,7 +63,7 @@ export const EntryTable = ({
         <h2>
           <Link href={`/exercises/${entry.exerciseId}`}>{entry.exercise.name}</Link>
         </h2>
-        <span className="muted numeric">{selected === null ? `${total} sets` : `set ${selected + 1}/${total}`}</span>
+        <span className="muted numeric">{selected === null ? `${total} sets` : `${selected + 1} of ${total}`}</span>
       </header>
       <div className="set-grid label" aria-hidden="true">
         <span>#</span>
@@ -83,7 +82,7 @@ export const EntryTable = ({
           // Until it is rated a set would read as all-out, so its max waits for the rating.
           const max = done && !rating && isWorkSet(row.set) ? estimatedMax(row.set) : null;
           const record = done && isRecord(row.set, before);
-          const number = kind === "warmup" ? "W" : String(workNumbers[row.index] ?? "");
+          const number = kind === "warmup" ? "W" : setName(rows, row.index).replace("set ", "");
           const classes = [
             "set-grid",
             "numeric",
