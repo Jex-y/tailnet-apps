@@ -7,15 +7,39 @@ import type { Viewer } from "./identity";
 export type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 export type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
-/** An app's tools, served at `/<slug>/mcp` and alongside every other app's at `/mcp`. */
+/** An app's tools, served at `/<slug>/mcp`, and also alongside the other shared apps' at `/mcp`. */
 export type AppMcp = {
   /** What the app is and how its tools fit together, for the model. */
   readonly instructions: string;
+  /** `own` keeps the app out of `/mcp`, so it is reached only through a connector of its own. */
+  readonly listing: "shared" | "own";
   /** Registers tools acting as `viewer`; tool names must be unique across every app. */
   readonly registerTools: (server: McpServer, viewer: Viewer) => void;
 };
 
 type McpApp = { readonly slug: string; readonly title: string; readonly mcp: AppMcp };
+
+/** A path that serves MCP: every shared app together, or one app alone. */
+export type McpEndpoint =
+  | { readonly kind: "combined"; readonly path: "/mcp"; readonly apps: readonly McpApp[] }
+  | { readonly kind: "app"; readonly path: `/${string}/mcp`; readonly app: McpApp };
+
+export const mcpEndpoints = (apps: readonly McpApp[]): readonly McpEndpoint[] => [
+  { kind: "combined", path: "/mcp", apps: apps.filter((app) => app.mcp.listing === "shared") },
+  ...apps.map((app): McpEndpoint => ({ kind: "app", path: `/${app.slug}/mcp`, app })),
+];
+
+const servedBy = (endpoint: McpEndpoint): { readonly name: string; readonly apps: readonly McpApp[] } => {
+  switch (endpoint.kind) {
+    case "combined":
+      return { name: "tailnet-apps", apps: endpoint.apps };
+    case "app":
+      return {
+        name: endpoint.app.mcp.listing === "own" ? endpoint.app.slug : `tailnet-apps-${endpoint.app.slug}`,
+        apps: [endpoint.app],
+      };
+  }
+};
 
 export const jsonResult = (value: unknown): CallToolResult => ({
   content: [{ type: "text", text: JSON.stringify(value) }],
@@ -60,21 +84,19 @@ const mcpHandler = (name: string, apps: readonly McpApp[]) => {
   };
 };
 
-/** `/mcp` for every app together, and `/<slug>/mcp` for each alone, each acting as whoever `authenticate` finds. */
+/** Every endpoint of {@link mcpEndpoints}, each acting as whoever `authenticate` finds for the request. */
 export const createMcpRoutes = (
   apps: readonly McpApp[],
   authenticate: (request: Request) => Promise<Viewer | Response>,
-) => {
-  const route = (name: string, served: readonly McpApp[]) => {
-    const serve = mcpHandler(name, served);
-    const handle = async (request: Request): Promise<Response> => {
-      const viewer = await authenticate(request);
-      return viewer instanceof Response ? viewer : serve(request, viewer);
-    };
-    return { GET: handle, POST: handle, DELETE: handle };
-  };
-  return Object.fromEntries([
-    ["/mcp", route("tailnet-apps", apps)],
-    ...apps.map((app) => [`/${app.slug}/mcp`, route(`tailnet-apps-${app.slug}`, [app])]),
-  ]);
-};
+) =>
+  Object.fromEntries(
+    mcpEndpoints(apps).map((endpoint) => {
+      const { name, apps: served } = servedBy(endpoint);
+      const serve = mcpHandler(name, served);
+      const handle = async (request: Request): Promise<Response> => {
+        const viewer = await authenticate(request);
+        return viewer instanceof Response ? viewer : serve(request, viewer);
+      };
+      return [endpoint.path, { GET: handle, POST: handle, DELETE: handle }];
+    }),
+  );

@@ -43,6 +43,13 @@
       "when": 1794835451491,
       "tag": "0005_serve_connector",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794839909842,
+      "tag": "0006_bind_tokens_to_resource",
+      "breakpoints": true
     }
   ]
 }

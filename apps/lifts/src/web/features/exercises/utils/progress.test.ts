@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { LiftSet } from "../../../../contract";
+import { linearFit } from "../../../../fit";
 import { maxShare } from "../../../../strength";
-import type { TrendPoint } from "./chart";
-import { linearFit } from "./fit";
-import { atTodaysLevel, repProfile, trendOver, weeksFrom } from "./progress";
+import { type TrendPoint, trendOver, weeksFrom } from "../../../../trend";
+import { atTodaysLevel, repProfile } from "./progress";
 
 const point = (date: string, maxKg: number): TrendPoint => ({
   date,

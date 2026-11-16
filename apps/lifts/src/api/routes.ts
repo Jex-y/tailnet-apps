@@ -26,6 +26,12 @@ export const createLiftsRoutes = ({ service, identity }: LiftsRoutesDeps) => {
     "/lifts/api/workouts": { GET: read(service.workouts) },
     "/lifts/api/entries": { GET: read(service.entries) },
     "/lifts/api/sets": { GET: read(service.sets) },
+    "/lifts/api/programs": { GET: read(service.programs) },
+    "/lifts/api/training-maxes": { GET: read(service.trainingMaxes) },
+    "/lifts/api/program-days": { GET: read(service.programDays) },
+    "/lifts/api/program-exercises": { GET: read(service.programExercises) },
+    "/lifts/api/prescriptions": { GET: read(service.prescriptions) },
+    "/lifts/api/sessions": { GET: read(service.sessions) },
     "/lifts/api/push": {
       POST: async (request) => {
         const { login } = resolveViewer(identity, request);

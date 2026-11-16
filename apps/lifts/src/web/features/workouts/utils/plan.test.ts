@@ -3,7 +3,7 @@ import type { LiftSet } from "../../../../contract";
 import type { WorkoutDetail } from "../../../../log";
 import { doneRows, lastSession, NO_INTENT, openRows, type Row, startingPoints, valuesOf, withChange } from "./plan";
 
-const exercise = (id: string) => ({ id, name: id, lift: null });
+const exercise = (id: string) => ({ id, name: id, lift: null, weightStepKg: 2.5 });
 
 const set = (weightKg: number, reps: number, fields: Partial<LiftSet> = {}): LiftSet => ({
   id: `${weightKg}x${reps}@${fields.position ?? 0}`,

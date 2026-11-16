@@ -31,7 +31,7 @@ deploy/           the production stack, the host's deploy script and its .env te
 ## Use from Claude
 
 Every app's functionality is also served over MCP (Streamable HTTP, stateless) at `https://apps.<tailnet>.ts.net/mcp`,
-or one app alone at `/<slug>/mcp`. It acts as the same Tailscale identity as the web apps and works from any client
+or one app alone at `/<slug>/mcp`. Lifts is served only alone, at `/lifts/mcp`. It acts as the same Tailscale identity as the web apps and works from any client
 on a tailnet device, e.g. Claude Code:
 
 ```sh
@@ -44,7 +44,8 @@ apps that use them, cannot reach the tailnet. For those, the server also serves 
 OAuth. Add that URL as a custom connector in claude.ai (Settings → Connectors) and leave the client ID and secret
 empty. Connecting opens an approval page on the tailnet, so the device you connect from must be on it; once approved,
 Claude acts as your Tailscale login, from anywhere. Only Claude's own callbacks and loopback addresses can receive an
-approval.
+approval. A connector reaches only the URL it was approved for, so add Lifts as a second connector at
+`https://apps-mcp.<tailnet>.ts.net/lifts/mcp`.
 
 ## Develop
 

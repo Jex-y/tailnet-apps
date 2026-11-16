@@ -252,5 +252,6 @@ const registerTools = (service: MoneyService, server: McpServer, owner: string) 
 /** Acts on the connected person's own money only. */
 export const createMoneyMcp = (service: MoneyService): AppMcp => ({
   instructions: INSTRUCTIONS,
+  listing: "shared",
   registerTools: (server, viewer) => registerTools(service, server, viewer.login),
 });

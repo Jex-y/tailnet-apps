@@ -1,11 +1,10 @@
 import { Link } from "wouter";
 import { COMPETITION_LIFTS, type Exercise } from "../../../../contract";
+import { sumOfEstimates } from "../../../../fit";
 import { sessionsOf, type WorkoutDetail } from "../../../../log";
+import { DEFAULT_WINDOW, trend, trendOver } from "../../../../trend";
 import { formatChange, formatKg, localToday } from "../../../utils/format";
-import { trend } from "../utils/chart";
-import { sumOfEstimates } from "../utils/fit";
 import { LIFT_NAMES } from "../utils/lifts";
-import { DEFAULT_WINDOW, trendOver } from "../utils/progress";
 import { TrendChart } from "./TrendChart";
 
 type Props = {

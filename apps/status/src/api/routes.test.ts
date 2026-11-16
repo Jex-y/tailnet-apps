@@ -51,7 +51,7 @@ const fakeApp: AppModule = {
   routes: appRoutes({}),
   jobs: [tick, broken],
   schedules: [schedule],
-  mcp: { instructions: "", registerTools: () => {} },
+  mcp: { instructions: "", listing: "shared", registerTools: () => {} },
 };
 
 /** Registered before the context, whose own `afterAll` closes the connection this needs. */

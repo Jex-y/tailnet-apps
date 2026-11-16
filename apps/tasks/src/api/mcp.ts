@@ -157,5 +157,6 @@ const registerTools = ({ service, now }: TasksMcpDeps, server: McpServer, owner:
 /** Acts on the connected person's own list only. */
 export const createTasksMcp = (deps: TasksMcpDeps): AppMcp => ({
   instructions: INSTRUCTIONS,
+  listing: "shared",
   registerTools: (server, viewer) => registerTools(deps, server, viewer.login),
 });

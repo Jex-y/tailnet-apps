@@ -3,13 +3,13 @@ import { Link, useLocation } from "wouter";
 import { COMPETITION_LIFTS, type Exercise } from "../../../../contract";
 import { type Session, sessionsOf, type WorkoutDetail } from "../../../../log";
 import { bestEstimate, isWorkSet, repRecords } from "../../../../strength";
+import { DEFAULT_WINDOW, trend, trendOver, type Window, weeksFrom } from "../../../../trend";
 import { ConfirmButton } from "../../../components/ConfirmButton";
 import { Icon } from "../../../components/Icon";
 import { dayBadge, formatDay, formatKg, formatSet, localToday } from "../../../utils/format";
 import { useExerciseActions } from "../api/exercises";
-import { trend } from "../utils/chart";
 import { LIFT_NAMES } from "../utils/lifts";
-import { atTodaysLevel, DEFAULT_WINDOW, repProfile, trendOver, type Window, weeksFrom } from "../utils/progress";
+import { atTodaysLevel, repProfile } from "../utils/progress";
 import { RepProfileCard } from "./RepProfileCard";
 import { TrendCard } from "./TrendCard";
 

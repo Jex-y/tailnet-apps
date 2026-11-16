@@ -6,6 +6,7 @@ each job's recent outcomes and failures, the schedules and each app's migrations
 
 export const createStatusMcp = (report: () => Promise<StatusReport>): AppMcp => ({
   instructions: INSTRUCTIONS,
+  listing: "shared",
   registerTools: (server) => {
     server.registerTool(
       "get_status",

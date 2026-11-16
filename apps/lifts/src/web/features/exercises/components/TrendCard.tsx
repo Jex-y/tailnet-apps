@@ -1,5 +1,5 @@
+import { type Trend, WINDOWS, type Window } from "../../../../trend";
 import { formatChange, formatKg } from "../../../utils/format";
-import { type Trend, WINDOWS, type Window } from "../utils/progress";
 import { TrendChart } from "./TrendChart";
 
 type Props = {

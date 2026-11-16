@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { LiftSet, Workout } from "../../../../contract";
-import { niceTicks, trend } from "./chart";
+import { trend } from "../../../../trend";
+import { niceTicks } from "./chart";
 
 const workout = (date: string): Workout => ({ id: date, date, finishedAt: null, notes: "", bodyweightKg: null });
 const set = (weightKg: number, reps: number, kind: LiftSet["kind"] = "work"): LiftSet => ({

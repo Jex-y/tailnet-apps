@@ -1,10 +1,47 @@
 import { HttpError } from "@apps/core";
-import { and, count, eq } from "drizzle-orm";
-import type { Entry, Exercise, LiftSet, Mutation, Workout } from "../contract";
+import { and, count, eq, ne, or } from "drizzle-orm";
+import type {
+  Entry,
+  Exercise,
+  LiftSet,
+  Mutation,
+  Prescription,
+  Program,
+  ProgramDay,
+  ProgramExercise,
+  ScheduledSession,
+  TrainingMax,
+  Workout,
+} from "../contract";
 import type { Log } from "../log";
+import type { Plan } from "../program";
 import type { LiftsDb } from "./db";
-import { entries, exercises, pushes, sets, workouts } from "./schema";
-import { readEntries, readExercises, readSets, readWorkouts } from "./views";
+import {
+  entries,
+  exercises,
+  prescriptions,
+  programDays,
+  programExercises,
+  programs,
+  pushes,
+  scheduledSessions,
+  sets,
+  trainingMaxes,
+  workouts,
+} from "./schema";
+import {
+  loadColumns,
+  readEntries,
+  readExercises,
+  readPrescriptions,
+  readProgramDays,
+  readProgramExercises,
+  readPrograms,
+  readSessions,
+  readSets,
+  readTrainingMaxes,
+  readWorkouts,
+} from "./views";
 
 export type LiftsServiceDeps = { readonly db: LiftsDb };
 
@@ -56,6 +93,19 @@ const deleteExercise = async (tx: Tx, owner: string, id: string) => {
     .where(and(eq(entries.owner, owner), eq(entries.exerciseId, id)));
   if (used !== undefined && used.entries > 0) {
     throw new HttpError(409, `"${exercise.name}" has been logged ${used.entries} times, so it cannot be deleted`);
+  }
+  const [planned] = await tx
+    .selectDistinct({ name: programs.name })
+    .from(programs)
+    .leftJoin(programDays, and(eq(programDays.owner, owner), eq(programDays.programId, programs.id)))
+    .leftJoin(
+      programExercises,
+      and(eq(programExercises.owner, owner), eq(programExercises.programDayId, programDays.id)),
+    )
+    .leftJoin(trainingMaxes, and(eq(trainingMaxes.owner, owner), eq(trainingMaxes.programId, programs.id)))
+    .where(and(eq(programs.owner, owner), or(eq(programExercises.exerciseId, id), eq(trainingMaxes.exerciseId, id))));
+  if (planned !== undefined) {
+    throw new HttpError(409, `"${exercise.name}" is in the program "${planned.name}", so it cannot be deleted`);
   }
   await tx.delete(exercises).where(and(eq(exercises.id, id), eq(exercises.owner, owner)));
 };
@@ -113,6 +163,157 @@ const putSet = async (tx: Tx, owner: string, { id, loggedAt, ...fields }: LiftSe
   );
 };
 
+const ownProgram = (tx: Tx, owner: string, id: string) =>
+  requireOwn(
+    tx
+      .select({ id: programs.id })
+      .from(programs)
+      .where(and(eq(programs.id, id), eq(programs.owner, owner))),
+    "That program no longer exists",
+  );
+
+const ownExercise = (tx: Tx, owner: string, id: string) =>
+  requireOwn(
+    tx
+      .select({ id: exercises.id })
+      .from(exercises)
+      .where(and(eq(exercises.id, id), eq(exercises.owner, owner))),
+    "That exercise no longer exists",
+  );
+
+const putProgram = async (tx: Tx, owner: string, { id, ...fields }: Program) => {
+  requireWritten(
+    await tx
+      .insert(programs)
+      .values({ id, owner, ...fields })
+      .onConflictDoUpdate({ target: programs.id, set: fields, setWhere: eq(programs.owner, owner) })
+      .returning({ id: programs.id }),
+  );
+};
+
+const putTrainingMax = async (tx: Tx, owner: string, { id, ...fields }: TrainingMax) => {
+  await ownProgram(tx, owner, fields.programId);
+  await ownExercise(tx, owner, fields.exerciseId);
+  const [other] = await tx
+    .select({ id: trainingMaxes.id })
+    .from(trainingMaxes)
+    .where(
+      and(
+        eq(trainingMaxes.owner, owner),
+        eq(trainingMaxes.programId, fields.programId),
+        eq(trainingMaxes.exerciseId, fields.exerciseId),
+        ne(trainingMaxes.id, id),
+      ),
+    );
+  if (other !== undefined) {
+    throw new HttpError(409, "That exercise already has a training max in this program");
+  }
+  requireWritten(
+    await tx
+      .insert(trainingMaxes)
+      .values({ id, owner, ...fields })
+      .onConflictDoUpdate({ target: trainingMaxes.id, set: fields, setWhere: eq(trainingMaxes.owner, owner) })
+      .returning({ id: trainingMaxes.id }),
+  );
+};
+
+const putProgramDay = async (tx: Tx, owner: string, { id, ...fields }: ProgramDay) => {
+  await ownProgram(tx, owner, fields.programId);
+  requireWritten(
+    await tx
+      .insert(programDays)
+      .values({ id, owner, ...fields })
+      .onConflictDoUpdate({ target: programDays.id, set: fields, setWhere: eq(programDays.owner, owner) })
+      .returning({ id: programDays.id }),
+  );
+};
+
+const putProgramExercise = async (tx: Tx, owner: string, { id, ...fields }: ProgramExercise) => {
+  await requireOwn(
+    tx
+      .select({ id: programDays.id })
+      .from(programDays)
+      .where(and(eq(programDays.id, fields.programDayId), eq(programDays.owner, owner))),
+    "That program day no longer exists",
+  );
+  await ownExercise(tx, owner, fields.exerciseId);
+  requireWritten(
+    await tx
+      .insert(programExercises)
+      .values({ id, owner, ...fields })
+      .onConflictDoUpdate({ target: programExercises.id, set: fields, setWhere: eq(programExercises.owner, owner) })
+      .returning({ id: programExercises.id }),
+  );
+};
+
+const putPrescription = async (tx: Tx, owner: string, { id, load, ...rest }: Prescription) => {
+  await requireOwn(
+    tx
+      .select({ id: programExercises.id })
+      .from(programExercises)
+      .where(and(eq(programExercises.id, rest.programExerciseId), eq(programExercises.owner, owner))),
+    "That exercise is no longer in the program",
+  );
+  const fields = { ...rest, ...loadColumns(load) };
+  requireWritten(
+    await tx
+      .insert(prescriptions)
+      .values({ id, owner, ...fields })
+      .onConflictDoUpdate({ target: prescriptions.id, set: fields, setWhere: eq(prescriptions.owner, owner) })
+      .returning({ id: prescriptions.id }),
+  );
+};
+
+const putSession = async (tx: Tx, owner: string, { id, ...session }: ScheduledSession) => {
+  await requireOwn(
+    tx
+      .select({ id: programDays.id })
+      .from(programDays)
+      .where(and(eq(programDays.id, session.programDayId), eq(programDays.owner, owner))),
+    "That program day no longer exists",
+  );
+  const workoutId = session.state === "logged" ? session.workoutId : null;
+  if (workoutId !== null) {
+    await requireOwn(
+      tx
+        .select({ id: workouts.id })
+        .from(workouts)
+        .where(and(eq(workouts.id, workoutId), eq(workouts.owner, owner))),
+      "That workout no longer exists",
+    );
+    const [other] = await tx
+      .select({ id: scheduledSessions.id })
+      .from(scheduledSessions)
+      .where(
+        and(
+          eq(scheduledSessions.owner, owner),
+          eq(scheduledSessions.workoutId, workoutId),
+          ne(scheduledSessions.id, id),
+        ),
+      );
+    if (other !== undefined) {
+      throw new HttpError(409, "That workout already logs another session");
+    }
+  }
+  const fields = { programDayId: session.programDayId, date: session.date, state: session.state, workoutId };
+  requireWritten(
+    await tx
+      .insert(scheduledSessions)
+      .values({ id, owner, ...fields })
+      .onConflictDoUpdate({ target: scheduledSessions.id, set: fields, setWhere: eq(scheduledSessions.owner, owner) })
+      .returning({ id: scheduledSessions.id }),
+  );
+};
+
+/** The session it logged goes back to planned, as if the workout had never been. */
+const deleteWorkout = async (tx: Tx, owner: string, id: string) => {
+  await tx
+    .update(scheduledSessions)
+    .set({ state: "planned", workoutId: null })
+    .where(and(eq(scheduledSessions.owner, owner), eq(scheduledSessions.workoutId, id)));
+  await tx.delete(workouts).where(and(eq(workouts.id, id), eq(workouts.owner, owner)));
+};
+
 const applyOne = async (tx: Tx, owner: string, mutation: Mutation): Promise<void> => {
   switch (mutation.type) {
     case "exercise.put":
@@ -122,8 +323,7 @@ const applyOne = async (tx: Tx, owner: string, mutation: Mutation): Promise<void
     case "workout.put":
       return putWorkout(tx, owner, mutation.row);
     case "workout.delete":
-      await tx.delete(workouts).where(and(eq(workouts.id, mutation.id), eq(workouts.owner, owner)));
-      return;
+      return deleteWorkout(tx, owner, mutation.id);
     case "entry.put":
       return putEntry(tx, owner, mutation.row);
     case "entry.delete":
@@ -133,6 +333,40 @@ const applyOne = async (tx: Tx, owner: string, mutation: Mutation): Promise<void
       return putSet(tx, owner, mutation.row);
     case "set.delete":
       await tx.delete(sets).where(and(eq(sets.id, mutation.id), eq(sets.owner, owner)));
+      return;
+    case "program.put":
+      return putProgram(tx, owner, mutation.row);
+    case "program.delete":
+      await tx.delete(programs).where(and(eq(programs.id, mutation.id), eq(programs.owner, owner)));
+      return;
+    case "trainingMax.put":
+      return putTrainingMax(tx, owner, mutation.row);
+    case "trainingMax.delete":
+      await tx.delete(trainingMaxes).where(and(eq(trainingMaxes.id, mutation.id), eq(trainingMaxes.owner, owner)));
+      return;
+    case "programDay.put":
+      return putProgramDay(tx, owner, mutation.row);
+    case "programDay.delete":
+      await tx.delete(programDays).where(and(eq(programDays.id, mutation.id), eq(programDays.owner, owner)));
+      return;
+    case "programExercise.put":
+      return putProgramExercise(tx, owner, mutation.row);
+    case "programExercise.delete":
+      await tx
+        .delete(programExercises)
+        .where(and(eq(programExercises.id, mutation.id), eq(programExercises.owner, owner)));
+      return;
+    case "prescription.put":
+      return putPrescription(tx, owner, mutation.row);
+    case "prescription.delete":
+      await tx.delete(prescriptions).where(and(eq(prescriptions.id, mutation.id), eq(prescriptions.owner, owner)));
+      return;
+    case "session.put":
+      return putSession(tx, owner, mutation.row);
+    case "session.delete":
+      await tx
+        .delete(scheduledSessions)
+        .where(and(eq(scheduledSessions.id, mutation.id), eq(scheduledSessions.owner, owner)));
       return;
   }
 };
@@ -152,12 +386,27 @@ export const createLiftsService = ({ db }: LiftsServiceDeps) => ({
   workouts: (owner: string) => readWorkouts(db, owner),
   entries: (owner: string) => readEntries(db, owner),
   sets: (owner: string) => readSets(db, owner),
+  programs: (owner: string) => readPrograms(db, owner),
+  trainingMaxes: (owner: string) => readTrainingMaxes(db, owner),
+  programDays: (owner: string) => readProgramDays(db, owner),
+  programExercises: (owner: string) => readProgramExercises(db, owner),
+  prescriptions: (owner: string) => readPrescriptions(db, owner),
+  sessions: (owner: string) => readSessions(db, owner),
 
   log: async (owner: string): Promise<Log> => ({
     exercises: await readExercises(db, owner),
     workouts: await readWorkouts(db, owner),
     entries: await readEntries(db, owner),
     sets: await readSets(db, owner),
+  }),
+
+  plan: async (owner: string): Promise<Plan> => ({
+    programs: await readPrograms(db, owner),
+    trainingMaxes: await readTrainingMaxes(db, owner),
+    days: await readProgramDays(db, owner),
+    exercises: await readProgramExercises(db, owner),
+    prescriptions: await readPrescriptions(db, owner),
+    sessions: await readSessions(db, owner),
   }),
 
   /** Applies the changes in order, all or nothing. */

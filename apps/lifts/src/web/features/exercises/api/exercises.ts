@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { CompetitionLift, Exercise } from "../../../../contract";
+import { type CompetitionLift, DEFAULT_WEIGHT_STEP_KG, type Exercise } from "../../../../contract";
 import { useStore } from "../../../hooks/useStore";
 import type { Store } from "../../../lib/store";
 
@@ -8,12 +8,12 @@ const actions = (store: Store) => ({
   create: (name: string, lift: CompetitionLift | null = null): string => {
     const id = crypto.randomUUID();
     store.write(() => {
-      store.exercises.insert({ id, name, lift });
+      store.exercises.insert({ id, name, lift, weightStepKg: DEFAULT_WEIGHT_STEP_KG });
     });
     return id;
   },
 
-  update: (exercise: Exercise, fields: Partial<Pick<Exercise, "name" | "lift">>) => {
+  update: (exercise: Exercise, fields: Partial<Pick<Exercise, "name" | "lift" | "weightStepKg">>) => {
     store.write(() => {
       store.exercises.update(exercise.id, (draft) => {
         Object.assign(draft, fields);

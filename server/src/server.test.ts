@@ -35,11 +35,12 @@ describe("server", () => {
     expect(await response.text()).toContain('<div id="root">');
   });
 
-  test("one MCP server offers every app's tools, each app's alone at its own path", async () => {
+  test("one MCP server offers every shared app's tools, each app's alone at its own path", async () => {
     const all = await connectMcp(request, "/mcp", uniqueLogin());
     const names = (await all.listTools()).tools.map((tool) => tool.name);
 
     expect(names).toEqual(expect.arrayContaining(["list_properties", "list_tasks", "get_status"]));
+    expect(names).not.toContain("log_workout");
     expect(all.getInstructions()).toContain("## Flat hunt");
     expect(JSON.parse((await callTool(all, "get_status")).text).apps).toContainEqual(
       expect.objectContaining({ slug: "tasks" }),
@@ -47,6 +48,9 @@ describe("server", () => {
 
     const status = await connectMcp(request, "/status/mcp", uniqueLogin());
     expect((await status.listTools()).tools.map((tool) => tool.name)).toEqual(["get_status"]);
+
+    const lifts = await connectMcp(request, "/lifts/mcp", uniqueLogin());
+    expect((await lifts.listTools()).tools.map((tool) => tool.name)).toContain("log_workout");
   });
 
   test("MCP requires a Tailscale identity", async () => {
@@ -144,5 +148,32 @@ describe("connector", () => {
     const refresh = { grant_type: "refresh_token", refresh_token: issued.body.refresh_token ?? "", client_id };
     expect((await token(refresh)).status).toBe(200);
     expect((await token(refresh)).body.error).toBe("invalid_grant");
+
+    const lifts = { ...params, resource: `${TEST_CONNECTOR_URL}/lifts/mcp` };
+    const liftsConsent = await tailnet(`/shell/connector/authorize?${new URLSearchParams(lifts)}`, { as: me });
+    expect(await liftsConsent.text()).toContain("will use Lifts as");
+    const liftsApproved = await tailnet("/shell/connector/authorize", {
+      ...form({ ...lifts, decision: "allow" }),
+      headers: { Origin: origin },
+      as: me,
+    });
+    const liftsIssued = await token({
+      ...exchange,
+      code: new URL(liftsApproved.headers.get("Location") ?? "").searchParams.get("code") ?? "",
+      code_verifier: verifier,
+    });
+    const liftsRefreshed = await token({ ...refresh, refresh_token: liftsIssued.body.refresh_token ?? "" });
+    const liftsToken = { headers: { Authorization: `Bearer ${liftsRefreshed.body.access_token}` } };
+    const liftsClient = await connectMcpWithToken(internet, "/lifts/mcp", liftsRefreshed.body.access_token ?? "");
+    expect((await liftsClient.listTools()).tools.map((tool) => tool.name)).toContain("log_workout");
+    expect((await internet("/mcp", { method: "POST", ...liftsToken })).status).toBe(401);
+    expect(
+      (
+        await internet("/lifts/mcp", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${issued.body.access_token}` },
+        })
+      ).status,
+    ).toBe(401);
   });
 });

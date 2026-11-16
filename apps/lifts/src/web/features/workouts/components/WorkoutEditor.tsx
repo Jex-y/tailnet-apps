@@ -3,12 +3,11 @@ import { useLocation } from "wouter";
 import { type Exercise, type LiftSet, Workout } from "../../../../contract";
 import { sessionsOf, type WorkoutDetail } from "../../../../log";
 import { bestEstimate, isRecord, isWorkSet, tonnage } from "../../../../strength";
+import { DEFAULT_WINDOW, trend, trendOver } from "../../../../trend";
 import { ConfirmButton } from "../../../components/ConfirmButton";
 import { Icon } from "../../../components/Icon";
 import { useNow } from "../../../hooks/useNow";
 import { formatDay, formatElapsed, formatKg } from "../../../utils/format";
-import { trend } from "../../exercises/utils/chart";
-import { DEFAULT_WINDOW, trendOver } from "../../exercises/utils/progress";
 import { useWorkoutActions } from "../api/workouts";
 import {
   doneRows,
