@@ -1,8 +1,8 @@
 import { type PointerEvent, useState } from "react";
+import type { Trend } from "../../../../trend";
 import { formatChange, formatDay, formatKg, formatSet } from "../../../utils/format";
 import { useElementWidth } from "../hooks/useElementWidth";
 import { niceTicks } from "../utils/chart";
-import type { Trend } from "../utils/progress";
 
 const MARGIN = { top: 10, right: 10, bottom: 22, left: 40 };
 const COMPACT_MARGIN = { top: 4, right: 4, bottom: 4, left: 4 };
