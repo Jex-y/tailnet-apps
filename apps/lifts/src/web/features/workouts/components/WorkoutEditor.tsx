@@ -1,17 +1,32 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useLocation } from "wouter";
-import { type Exercise, Workout } from "../../../../contract";
+import { type Exercise, type LiftSet, Workout } from "../../../../contract";
 import { sessionsOf, type WorkoutDetail } from "../../../../log";
 import { bestEstimate, isRecord, isWorkSet, tonnage } from "../../../../strength";
 import { ConfirmButton } from "../../../components/ConfirmButton";
 import { Icon } from "../../../components/Icon";
-import { formatDay, formatKg } from "../../../utils/format";
+import { useNow } from "../../../hooks/useNow";
+import { formatDay, formatElapsed, formatKg } from "../../../utils/format";
+import { trend } from "../../exercises/utils/chart";
+import { DEFAULT_WINDOW, trendOver } from "../../exercises/utils/progress";
 import { useWorkoutActions } from "../api/workouts";
-import { lastSession } from "../utils/plan";
-import { EntryCard } from "./EntryCard";
+import {
+  doneRows,
+  type Intent,
+  lastSession,
+  NO_INTENT,
+  openRows,
+  type Row,
+  type SetValues,
+  setValues,
+  valuesOf,
+  withChange,
+} from "../utils/plan";
+import { currentEntry, nextPlanned, setName, summariseSets } from "../utils/session";
+import { Dock, type DockMode, type Figures } from "./Dock";
+import { EntryTable, type Forecast } from "./EntryTable";
 import { ExerciseSheet } from "./ExerciseSheet";
-import { RatingBar } from "./RatingBar";
-import { RestTimer } from "./RestTimer";
+import { useRest } from "./RestTimer";
 
 type Props = {
   readonly workout: WorkoutDetail;
@@ -21,33 +36,122 @@ type Props = {
 
 const Bodyweight = Workout.shape.bodyweightKg.unwrap();
 
-/** One workout, open to change whether it is under way or long finished. */
+/** The empty bar for five, for a set added to an exercise with nothing logged. */
+const FIRST_SET: SetValues = { weightKg: 20, reps: 5, rpe: null, kind: "work" };
+
+/** Time since the first set, and the rest since the last, ticking on their own so the page around them does not. */
+const SessionClock = ({ first, last }: { readonly first: string | null; readonly last: string | null }) => {
+  const now = useNow();
+  const rest = useRest(last);
+  return (
+    <span className="session-clock numeric">
+      <span>{first === null ? "0:00" : formatElapsed(now - Date.parse(first))}</span>
+      {rest !== null && <span className="muted">rest {formatElapsed(rest)}</span>}
+    </span>
+  );
+};
+
+/**
+ * One workout, open to change whether it is under way or long finished. Under way, finished exercises fold to a line,
+ * the one being lifted is a table, the rest wait below, and the dock at the bottom logs each set.
+ */
 export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
   const actions = useWorkoutActions();
   const [, navigate] = useLocation();
   const [picking, setPicking] = useState(false);
+  const [intents, setIntents] = useState<ReadonlyMap<string, Intent>>(new Map());
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [selection, setSelection] = useState<{ readonly entryId: string; readonly index: number } | null>(null);
   const [ratingId, setRatingId] = useState<string | null>(null);
-  const stopAsking = useCallback(() => setRatingId(null), []);
   const [notes, setNotes] = useState(workout.notes);
   const [bodyweight, setBodyweight] = useState(workout.bodyweightKg === null ? "" : String(workout.bodyweightKg));
 
   const underWay = workout.finishedAt === null;
-  const rated = workout.entries.flatMap((entry) =>
-    entry.sets.filter((set) => set.id === ratingId).map((set) => ({ set, exercise: entry.exercise.name })),
-  )[0];
   const others = workouts.filter((other) => other.id !== workout.id && other.date <= workout.date);
-  const sets = workout.entries.flatMap((entry) => entry.sets);
-  const lastLogged = sets.reduce<string | null>(
-    (latest, set) => (latest === null || set.loggedAt > latest ? set.loggedAt : latest),
-    null,
-  );
-  const before = (exerciseId: string) => sessionsOf(others, exerciseId).flatMap((session) => session.sets);
-  const records = workout.entries.flatMap((entry) => {
-    const best = bestEstimate(entry.sets);
-    return best !== null && isRecord(best.set, before(entry.exerciseId))
-      ? [{ id: entry.id, name: entry.exercise.name, maxKg: best.maxKg }]
-      : [];
+  const plans = workout.entries.map((entry) => {
+    const template = lastSession(workouts, workout, entry.exerciseId)?.sets ?? [];
+    const intent = intents.get(entry.id) ?? NO_INTENT;
+    const history = sessionsOf(others, entry.exerciseId);
+    return {
+      id: entry.id,
+      entry,
+      template,
+      intent,
+      history,
+      rows: underWay ? openRows(entry.sets, template, intent) : doneRows(entry.sets, template),
+      before: history.flatMap((session) => session.sets),
+      lastBestKg: bestEstimate(template)?.maxKg ?? null,
+    };
   });
+  type Plan = (typeof plans)[number];
+
+  const sets = workout.entries.flatMap((entry) => entry.sets);
+  const loggedTimes = sets.map((set) => set.loggedAt).sort();
+  const current = underWay ? currentEntry(plans, (plan) => plan.rows, chosen) : null;
+  const picked = plans.find((plan) => plan.entry.id === selection?.entryId);
+  const pickedRow = picked?.rows.find((row) => row.index === selection?.index);
+  const next = current === null ? null : nextPlanned(current.rows);
+  const rated = plans.flatMap((plan) =>
+    plan.entry.sets.filter((set) => set.id === ratingId).map((set) => ({ plan, set })),
+  )[0];
+
+  const forecast = ({ history }: Plan): Forecast | null => {
+    const fit = trendOver(trend(history), workout.date, DEFAULT_WINDOW.weeks).fit;
+    return fit === null ? null : { maxKg: fit.at(0), halfWidth: fit.confidenceHalfWidth(0) };
+  };
+  const setIntent = (entryId: string, intent: Intent) => setIntents(new Map(intents).set(entryId, intent));
+  const choose = (entryId: string) => {
+    setChosen(entryId);
+    setSelection(null);
+  };
+  const change = (plan: Plan, row: Row, patch: Partial<SetValues>) => {
+    if (row.kind === "logged") {
+      actions.updateSet(row.set, patch);
+    } else {
+      setIntent(plan.entry.id, withChange(plan.rows, plan.intent, row.index, patch));
+    }
+  };
+  const log = (plan: Plan, row: Extract<Row, { kind: "planned" }>, figures: Figures) => {
+    const values = { ...row.values, ...figures };
+    // A weight or rep count typed in carries down to the sets still to do that matched it.
+    setIntent(
+      plan.entry.id,
+      withChange(plan.rows, plan.intent, row.index, { weightKg: values.weightKg, reps: values.reps }),
+    );
+    const id = actions.addSet(plan.entry, values, row.index);
+    // A work set is asked its RPE, unless one was typed in with it.
+    setRatingId(values.kind === "work" && values.rpe === null ? id : null);
+    setSelection(null);
+    if (chosen === plan.entry.id && !plan.rows.some((other) => other.kind === "planned" && other.index > row.index)) {
+      setChosen(null);
+    }
+  };
+  const addSet = (plan: Plan) => {
+    if (underWay) {
+      setIntent(plan.entry.id, { ...plan.intent, extra: plan.rows.length - plan.template.length + 1 });
+      choose(plan.entry.id);
+      return;
+    }
+    const last = plan.rows.at(-1);
+    actions.addSet(plan.entry, last === undefined ? FIRST_SET : { ...valuesOf(last), rpe: null });
+    setSelection({ entryId: plan.entry.id, index: plan.rows.length });
+  };
+  const remove = (plan: Plan, set: LiftSet, index: number) => {
+    actions.removeSet(set);
+    // Gone from the log, it goes back to being a set still to do, as it was lifted.
+    setIntent(plan.entry.id, {
+      ...plan.intent,
+      changes: new Map(plan.intent.changes).set(index, { ...setValues(set), rpe: null }),
+    });
+    setSelection(null);
+    if (ratingId === set.id) {
+      setRatingId(null);
+    }
+  };
+  const select = (plan: Plan, index: number) => {
+    const same = selection?.entryId === plan.entry.id && selection.index === index;
+    setSelection(same ? null : { entryId: plan.entry.id, index });
+  };
   const saveBodyweight = () => {
     const typed = bodyweight.trim().replace(",", ".");
     const parsed = typed === "" ? null : Bodyweight.safeParse(Number(typed));
@@ -57,6 +161,96 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
       actions.update(workout, { bodyweightKg: parsed?.data ?? null });
     }
   };
+
+  const label = (plan: Plan, row: Row) =>
+    `${plan.entry.exercise.name} · ${row.kind === "logged" ? "editing " : ""}${setName(plan.rows, row.index)}`;
+  const rowKey = (plan: Plan, row: Row) => `${plan.entry.id}:${row.index}`;
+  const dock = ((): { readonly key: string; readonly mode: DockMode } | null => {
+    if (picked !== undefined && pickedRow !== undefined) {
+      return pickedRow.kind === "logged"
+        ? {
+            key: `edit:${pickedRow.set.id}`,
+            mode: {
+              kind: "edit",
+              label: label(picked, pickedRow),
+              set: pickedRow.set,
+              onKind: (kind) => change(picked, pickedRow, { kind }),
+              onSave: (figures) => {
+                actions.updateSet(pickedRow.set, figures);
+                setSelection(null);
+              },
+              onRemove: () => remove(picked, pickedRow.set, pickedRow.index),
+            },
+          }
+        : {
+            key: rowKey(picked, pickedRow),
+            mode: {
+              kind: "ready",
+              label: label(picked, pickedRow),
+              values: pickedRow.values,
+              onKind: (kind) => change(picked, pickedRow, { kind }),
+              onLog: (figures) => log(picked, pickedRow, figures),
+            },
+          };
+    }
+    if (current === null) {
+      return null;
+    }
+    if (rated !== undefined) {
+      return {
+        // Keyed as the set it logs next, so figures typed for it outlast the question.
+        key: next === null ? "rate" : rowKey(current, next),
+        mode: {
+          kind: "rate",
+          label: `How hard was ${formatKg(rated.set.weightKg)} × ${rated.set.reps}? · ${rated.plan.entry.exercise.name}`,
+          set: rated.set,
+          since: loggedTimes.at(-1) ?? null,
+          next: next?.values ?? null,
+          onRate: (rpe) => {
+            actions.updateSet(rated.set, { rpe });
+            setRatingId(null);
+          },
+          onSkip: () => setRatingId(null),
+          onLog: (figures) => next !== null && log(current, next, figures),
+          onAddSet: () => addSet(current),
+        },
+      };
+    }
+    return next === null
+      ? {
+          key: "idle",
+          mode: {
+            kind: "idle",
+            label: `${current.entry.exercise.name} · all sets done`,
+            onAddSet: () => addSet(current),
+          },
+        }
+      : {
+          key: rowKey(current, next),
+          mode: {
+            kind: "ready",
+            label: label(current, next),
+            values: next.values,
+            onKind: (kind) => change(current, next, { kind }),
+            onLog: (figures) => log(current, next, figures),
+          },
+        };
+  })();
+  const selectedIn = (plan: Plan) =>
+    selection?.entryId === plan.entry.id
+      ? selection.index
+      : dock?.mode.kind === "ready" && current === plan && next !== null
+        ? next.index
+        : null;
+
+  const records = plans.flatMap(({ entry, before }) => {
+    const best = bestEstimate(entry.sets);
+    return best !== null && isRecord(best.set, before)
+      ? [{ id: entry.id, name: entry.exercise.name, maxKg: best.maxKg }]
+      : [];
+  });
+  const rpes = sets.filter(isWorkSet).flatMap(({ rpe }) => (rpe === null ? [] : [rpe]));
+  const currentAt = current === null ? -1 : plans.indexOf(current);
 
   return (
     <>
@@ -71,7 +265,7 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
             onChange={(event) => event.target.value !== "" && actions.update(workout, { date: event.target.value })}
           />
         </label>
-        {underWay && <RestTimer since={lastLogged} />}
+        {underWay && <SessionClock first={loggedTimes[0] ?? null} last={loggedTimes.at(-1) ?? null} />}
         <button
           type="button"
           className={underWay ? "primary" : undefined}
@@ -103,30 +297,45 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
         </ul>
       )}
 
-      {workout.entries.map((entry) => (
-        <EntryCard
-          key={entry.id}
-          entry={entry}
-          lastTime={lastSession(workouts, workout, entry.exerciseId)}
-          before={before(entry.exerciseId)}
-          underWay={underWay}
-          ratingId={ratingId}
-          onAsk={setRatingId}
-          actions={actions}
-        />
-      ))}
-      {rated !== undefined && (
-        <RatingBar
-          key={rated.set.id}
-          set={rated.set}
-          exercise={rated.exercise}
-          onClose={stopAsking}
-          onRate={(rpe) => {
-            actions.updateSet(rated.set, { rpe });
-            setRatingId(null);
-          }}
-        />
-      )}
+      {plans.map((plan, at) => {
+        const { entry } = plan;
+        if (!underWay || at === currentAt) {
+          return (
+            <EntryTable
+              key={entry.id}
+              entry={entry}
+              rows={plan.rows}
+              lastBestKg={plan.lastBestKg}
+              before={plan.before}
+              forecast={forecast(plan)}
+              selected={selectedIn(plan)}
+              ratingId={dock?.mode.kind === "rate" ? dock.mode.set.id : null}
+              onSelect={(index) => select(plan, index)}
+              onAddSet={() => addSet(plan)}
+              actions={actions}
+            />
+          );
+        }
+        if (at < currentAt) {
+          const best = bestEstimate(entry.sets);
+          return (
+            <button key={entry.id} type="button" className="card entry-folded numeric" onClick={() => choose(entry.id)}>
+              <Icon name="check" />
+              <strong>{entry.exercise.name}</strong>
+              <span className="muted">{summariseSets(entry.sets) || "No work sets"}</span>
+              <span>{best === null ? "" : formatKg(best.maxKg)}</span>
+              {records.some((record) => record.id === entry.id) && <span className="pr">PR</span>}
+            </button>
+          );
+        }
+        return (
+          <button key={entry.id} type="button" className="entry-next numeric" onClick={() => choose(entry.id)}>
+            {at === currentAt + 1 && <span className="label">Next</span>}
+            <strong>{entry.exercise.name}</strong>
+            <span className="muted">{summariseSets(plan.template) || "New"}</span>
+          </button>
+        );
+      })}
 
       <button type="button" className="add-exercise" onClick={() => setPicking(true)}>
         <Icon name="plus" />
@@ -138,7 +347,7 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
           workouts={workouts}
           onClose={() => setPicking(false)}
           onPick={(exerciseId) => {
-            actions.addEntry(workout, exerciseId);
+            choose(actions.addEntry(workout, exerciseId));
             setPicking(false);
           }}
         />
@@ -153,8 +362,14 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
           <div>
             <dt className="label">Lifted</dt>
             <dd className="numeric">
-              {formatKg(tonnage(sets))}
-              <small>kg</small>
+              {formatKg(tonnage(sets) / 1000)}
+              <small>t</small>
+            </dd>
+          </div>
+          <div>
+            <dt className="label">Mean RPE</dt>
+            <dd className="numeric">
+              {rpes.length === 0 ? "–" : formatKg(rpes.reduce((sum, rpe) => sum + rpe, 0) / rpes.length)}
             </dd>
           </div>
           <div>
@@ -193,6 +408,8 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
           Delete workout
         </ConfirmButton>
       </section>
+
+      {dock !== null && <Dock key={dock.key} mode={dock.mode} />}
     </>
   );
 };

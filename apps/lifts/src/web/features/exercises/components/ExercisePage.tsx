@@ -5,11 +5,13 @@ import { type Session, sessionsOf, type WorkoutDetail } from "../../../../log";
 import { bestEstimate, isWorkSet, repRecords } from "../../../../strength";
 import { ConfirmButton } from "../../../components/ConfirmButton";
 import { Icon } from "../../../components/Icon";
-import { dayBadge, formatDay, formatKg, formatSet } from "../../../utils/format";
+import { dayBadge, formatDay, formatKg, formatSet, localToday } from "../../../utils/format";
 import { useExerciseActions } from "../api/exercises";
 import { trend } from "../utils/chart";
 import { LIFT_NAMES } from "../utils/lifts";
-import { MaxChart } from "./MaxChart";
+import { atTodaysLevel, DEFAULT_WINDOW, repProfile, trendOver, type Window, weeksFrom } from "../utils/progress";
+import { RepProfileCard } from "./RepProfileCard";
+import { TrendCard } from "./TrendCard";
 
 type Props = {
   readonly exercises: readonly Exercise[];
@@ -23,7 +25,13 @@ const sessionMax = (sets: Session["sets"]): string => {
 };
 
 const History = ({ sessions }: { readonly sessions: readonly Session[] }) => {
-  const points = trend(sessions);
+  const [window, setWindow] = useState<Window>(DEFAULT_WINDOW);
+  const today = localToday();
+  const within = sessions.filter(
+    ({ workout }) => window.weeks === null || weeksFrom(workout.date, today) >= -window.weeks,
+  );
+  const fitted = trendOver(trend(sessions), today, window.weeks);
+  const profile = repProfile(atTodaysLevel(within, fitted.fit, today));
   const all = sessions.flatMap((session) => session.sets);
   const dateOf = new Map(sessions.flatMap(({ workout, sets }) => sets.map((set) => [set.id, workout.date] as const)));
   const records = repRecords(all);
@@ -45,12 +53,8 @@ const History = ({ sessions }: { readonly sessions: readonly Session[] }) => {
           <dd className="numeric">{all.filter(isWorkSet).length}</dd>
         </div>
       </dl>
-      {points.length > 1 && (
-        <section className="card">
-          <h2>Estimated max</h2>
-          <MaxChart points={points} />
-        </section>
-      )}
+      <TrendCard trend={fitted} window={window} onWindow={setWindow} />
+      {profile !== null && <RepProfileCard profile={profile} />}
       {records.length > 0 && (
         <section className="card">
           <h2>Rep records</h2>

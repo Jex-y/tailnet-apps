@@ -7,7 +7,8 @@ import { Pages } from "./components/Pages";
 import { StoreContext } from "./hooks/useStore";
 import { openStore, type Store } from "./lib/store";
 
-void installShell();
+// Lifts keeps its own look, Paper, pinned on the page, whatever theme the other apps are in.
+void installShell({ theme: "own" });
 
 const root = document.getElementById("root");
 if (!root) {

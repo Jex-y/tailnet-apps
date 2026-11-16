@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { LiftSet, Workout } from "../../../../contract";
-import { datePositions, niceTicks, trend } from "./chart";
+import { niceTicks, trend } from "./chart";
 
 const workout = (date: string): Workout => ({ id: date, date, finishedAt: null, notes: "", bodyweightKg: null });
 const set = (weightKg: number, reps: number, kind: LiftSet["kind"] = "work"): LiftSet => ({
@@ -35,12 +35,5 @@ describe("niceTicks", () => {
   test("brackets the range in round steps", () => {
     expect(niceTicks(152, 171, 4)).toEqual([150, 155, 160, 165, 170, 175]);
     expect(niceTicks(100, 100, 4)).toEqual([100, 120]);
-  });
-});
-
-describe("datePositions", () => {
-  test("spaces dates by the time between them", () => {
-    expect(datePositions(["2026-10-01", "2026-10-02", "2026-10-05"])).toEqual([0, 0.25, 1]);
-    expect(datePositions(["2026-10-01"])).toEqual([0.5]);
   });
 });

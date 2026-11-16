@@ -1,4 +1,5 @@
 @import "@apps/core/theme.css";
+@import "./paper.css";
 
 a {
   color: inherit;
@@ -310,9 +311,9 @@ button.start.primary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   margin: -1rem -1rem 0;
-  padding: 0.6rem 1rem;
+  padding: 0.35rem 1rem;
   background: var(--chrome);
   -webkit-backdrop-filter: var(--chrome-blur);
   backdrop-filter: var(--chrome-blur);
@@ -331,7 +332,7 @@ button.start.primary {
 }
 
 .session-bar button {
-  min-height: 2.75rem;
+  min-height: 2.5rem;
   padding-inline: 1.25rem;
 }
 
@@ -343,7 +344,7 @@ button.start.primary {
 }
 
 .session-day strong {
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   letter-spacing: var(--heading-tracking);
 }
 
@@ -356,17 +357,18 @@ button.start.primary {
   opacity: 0;
 }
 
-.rest {
-  display: grid;
-  justify-items: end;
+.session-clock {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
   line-height: 1.2;
+  font-size: 1.05rem;
+  font-weight: 600;
 }
 
-.rest .numeric {
-  min-width: 3.2ch;
-  font-size: 1.2rem;
-  font-weight: 600;
-  text-align: right;
+.session-clock .muted {
+  font-size: 0.8rem;
+  font-weight: 400;
 }
 
 .pr {
@@ -394,19 +396,12 @@ button.start.primary {
   gap: 0.6rem;
 }
 
-.entry {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.5rem;
-  padding: 1rem 0.75rem 0.75rem;
-}
-
 .entry-heading {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: baseline;
   gap: 0.75rem;
-  padding-inline: 0.25rem;
+  padding-inline: 0.4rem;
 }
 
 .entry-heading h2 {
@@ -428,140 +423,350 @@ button.start.primary {
   font-weight: 600;
 }
 
-.sets {
+/* The exercise being lifted: a row a set, read at a glance from a step away. */
+.entry-table {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 0.3rem;
+  gap: 0.2rem;
+  padding: 0.85rem 0.45rem 0.6rem;
+}
+
+/* Set, last time, kilograms, reps, RPE, estimated max, change on last time. */
+.set-grid {
+  display: grid;
+  grid-template-columns: 1.1rem minmax(0, 1fr) 3rem 1.9rem 2rem 3.1rem 2.5rem;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.45rem;
+  text-align: right;
+}
+
+.set-grid > :nth-child(-n + 2) {
+  text-align: left;
+}
+
+.set-grid.label {
+  margin-top: 0.3rem;
+}
+
+.set-rows {
+  display: grid;
+  gap: 2px;
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-/* Set, last time, kilograms, reps, RPE, done. */
-.set-row {
-  display: grid;
-  grid-template-columns: 1.75rem minmax(0, 1fr) 4rem 2.75rem 2.75rem 2.75rem;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.2rem 0.25rem;
-  border-radius: var(--radius-small);
-}
-
-.set-columns {
-  padding-block: 0;
-  text-align: center;
-}
-
-.set-columns > :nth-child(2) {
-  text-align: left;
-}
-
-.set-row button {
-  height: 2.75rem;
-  padding: 0;
-  border-radius: var(--radius-small);
-}
-
-.set-row input {
+/* Tapping a row hands it to the dock; it is never typed into, so it can stay this dense. */
+button.set-grid {
   width: 100%;
-  min-width: 0;
-  height: 2.75rem;
-  padding: 0;
-  font-size: 1.1rem;
-  font-weight: 600;
-  text-align: center;
-}
-
-button.set-number {
+  scroll-margin: calc(8rem + env(safe-area-inset-top)) 0 calc(var(--dock-height) + 1rem + env(safe-area-inset-bottom));
+  min-height: 2.5rem;
+  padding-block: 0;
   background: none;
   border-color: transparent;
+  border-radius: var(--radius-small);
+  font-family: var(--figure-font);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+button.set-grid.to-do {
   color: var(--muted);
-  font-size: 0.95rem;
+}
+
+.warmup .set-number {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+button.set-grid.selected {
+  background: color-mix(in oklab, var(--accent) 9%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+  color: var(--fg);
+  font-weight: 700;
 }
 
 .set-previous {
   overflow: hidden;
   color: var(--muted);
   font-size: 0.8rem;
-  letter-spacing: -0.01em;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-button.set-rpe {
-  font-size: 0.95rem;
-}
-
-button.set-rpe:disabled {
-  background: none;
-  border-color: transparent;
-}
-
-button.tick {
-  color: var(--muted);
-}
-
-/* A set still to do reads as a suggestion until it is ticked off. */
-.to-do input {
-  color: var(--muted);
-  font-weight: 400;
-}
-
-.set-row.done {
-  background: color-mix(in oklab, var(--success) 14%, transparent);
-}
-
-.set-row.done button.tick {
-  background: var(--success);
-  border-color: var(--success);
-  color: var(--on-accent);
-}
-
-.set-row.warmup button.set-number {
+.set-grid .up {
   color: var(--accent);
   font-weight: 600;
 }
 
-/* Over the page, by the thumb: asking for an RPE never moves the rows being ticked off. */
-.rating {
-  position: fixed;
-  inset: auto 0 1rem;
-  z-index: 3;
+.entry-context {
+  margin: 0;
+  padding: 0.2rem 0.45rem 0;
+  font-size: 0.8rem;
+}
+
+/* An exercise done, folded to a line; tapping it opens it again. */
+button.entry-folded {
   display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  justify-content: stretch;
+  align-items: center;
   gap: 0.5rem;
-  max-width: 32rem;
-  margin: 0 auto;
-  padding: 0.6rem 0.75rem 0.75rem;
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.85rem;
   border-radius: var(--radius);
+  font-family: var(--figure-font);
+  font-size: 0.9rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+}
+
+.entry-folded .icon {
+  color: var(--success);
+}
+
+.entry-folded .muted,
+.entry-next .muted {
+  overflow: hidden;
+  font-size: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.entry-next {
+  justify-content: flex-start;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.85rem;
+  background: none;
+  border: 1px dashed var(--edge);
+  border-radius: var(--radius);
+  font-family: var(--figure-font);
+  font-size: 0.9rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.entry-next .muted {
+  margin-left: auto;
+}
+
+/*
+ * The dock: the controls, where the thumb rests, just above the tab bar on a phone. Its height is fixed and its big
+ * button is always at the bottom, whatever it is doing, so a set is logged by feel. Figures go in on its own pad, so
+ * the system keyboard never covers the page.
+ */
+:root {
+  --dock-height: 21rem;
+  --tab-bar-height: 3.75rem;
+}
+
+.dock {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 34rem;
+  height: calc(var(--dock-height) + env(safe-area-inset-bottom));
+  margin: 0 auto;
+  padding: 0.6rem 0.75rem calc(0.7rem + env(safe-area-inset-bottom));
+  background: var(--surface-raised);
+  border: 1px solid var(--edge);
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
   box-shadow: var(--shadow-raised);
 }
 
-.rating-ask {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.95rem;
-}
-
-.rpe {
-  display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
-  gap: 0.25rem;
-}
-
-.rpe button {
-  height: 2.75rem;
+.dock button {
+  min-height: 2.75rem;
   padding: 0;
   border-radius: var(--radius-small);
-  font-size: 0.85rem;
+  font-family: var(--figure-font);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
-.rpe button[aria-pressed="true"] {
+.dock-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.25rem;
+}
+
+.dock-label {
+  flex: 1;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dock button.dock-chip {
+  min-height: 2.25rem;
+  padding-inline: 0.8rem;
+  font-size: 0.8125rem;
+}
+
+/* Weight, reps and RPE; the one being typed into is outlined, and greyed until a key replaces it. */
+.dock-fields {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.dock button.dock-field {
+  justify-content: center;
+  align-items: baseline;
+  gap: 0.3rem;
+  min-height: 3.25rem;
+  padding-top: 0.2rem;
+  background: var(--surface-2);
+  border: 2px solid transparent;
+}
+
+.dock button.dock-field[aria-pressed="true"] {
+  background: var(--surface);
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.dock button.dock-field[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.dock-value {
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.dock-value.fresh {
+  color: var(--muted);
+}
+
+.dock-unit {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.dock-pad button {
+  min-height: 2.6rem;
+}
+
+.dock-pad {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.dock-pad .icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+/* While the last set is rated, the fields hold the next one: dimmed until tapped. */
+.dock.rate .dock-field {
+  opacity: 0.6;
+}
+
+.dock-rate {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.dock-rpe {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.35rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.dock button[aria-pressed="true"]:not(.dock-field) {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
+}
+
+.dock button.dock-log {
+  gap: 0.5rem;
+  min-height: 3.5rem;
+  margin-top: auto;
+  background: var(--accent);
+  border-color: var(--accent);
+  border-radius: var(--radius);
+  color: var(--on-accent);
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.dock-log .icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  stroke-width: 2.6;
+}
+
+.rest-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.rest-clock {
+  min-width: 3.6ch;
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+
+.rest-track {
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  background: var(--surface-2);
+  border-radius: 3px;
+}
+
+.rest-track span {
+  display: block;
+  height: 100%;
+  background: var(--muted);
+  border-radius: 3px;
+}
+
+.rest-bar.rested .rest-clock {
+  color: var(--accent);
+}
+
+.rest-bar.rested .rest-track span {
+  background: var(--accent);
+}
+
+/* Room under the page for the dock, so the last rows can scroll clear of it. */
+main:has(.dock) {
+  padding-bottom: calc(var(--dock-height) + 1.5rem + env(safe-area-inset-bottom));
+}
+
+body:has(.dock) .notices {
+  bottom: calc(var(--dock-height) + 1rem + env(safe-area-inset-bottom));
 }
 
 .entry-footer {
@@ -610,7 +815,7 @@ button.add-exercise {
 
 .tallies {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.5rem;
   width: 100%;
   margin: 0;
@@ -905,6 +1110,244 @@ button.choice.create {
   border-top: 1px solid var(--border);
 }
 
+/* Progress */
+
+.segmented {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 2px;
+  margin: 0 0 0.75rem;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 0;
+  border-radius: var(--radius-small);
+}
+
+.segmented label {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 2rem;
+  border-radius: calc(var(--radius-small) - 2px);
+  color: var(--muted);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.segmented label:has(input:checked) {
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  color: var(--fg);
+  font-weight: 700;
+}
+
+.segmented label:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+}
+
+.trend-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+  margin: 0 0 0.4rem;
+}
+
+.trend-headline strong {
+  font-size: 1.9rem;
+  letter-spacing: -0.02em;
+}
+
+.trend-headline > :nth-child(3) {
+  margin-left: auto;
+  font-weight: 700;
+}
+
+.rising {
+  color: var(--accent);
+}
+
+.stats {
+  display: grid;
+  margin: 0.6rem 0 0;
+}
+
+.stats div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+
+.stats dt {
+  color: var(--muted);
+}
+
+.stat {
+  margin: 0;
+  text-align: right;
+}
+
+.footnote {
+  margin-top: 0.6rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.75rem;
+}
+
+.key {
+  display: inline-block;
+  width: 14px;
+}
+
+.line-key {
+  height: 2px;
+  background: var(--accent);
+}
+
+.interval-key {
+  border-top: 1.5px dashed var(--accent);
+}
+
+.dot-key,
+.easy-key {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dot-key {
+  background: var(--fg);
+}
+
+.easy-key {
+  border: 1.5px solid var(--muted);
+}
+
+.total-card p {
+  margin: 0;
+}
+
+a.lift-card {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.8rem 1rem;
+  text-decoration: none;
+}
+
+.lift-card-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.lift-card-heading .muted {
+  font-size: 0.8rem;
+}
+
+.lift-card-figure {
+  margin-left: auto;
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.lift-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.ranges {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.ranges th,
+.ranges td {
+  padding: 0.45rem 0.5rem 0.45rem 0;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.ranges thead th {
+  color: var(--muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size-small);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.ranges tbody tr {
+  border-top: 1px solid var(--border);
+}
+
+.ranges td .muted {
+  display: block;
+  font-size: 0.75rem;
+}
+
+.ranges td:nth-child(3) {
+  width: 45%;
+}
+
+.ci {
+  position: relative;
+  display: block;
+  height: 12px;
+}
+
+.ci-zero {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--border-strong);
+  opacity: 0.4;
+}
+
+.ci-bar {
+  position: absolute;
+  top: 5px;
+  height: 2px;
+  background: var(--muted);
+}
+
+.ci-mean {
+  position: absolute;
+  top: 1px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  background: var(--fg);
+  border-radius: 50%;
+}
+
+.ci-mean.strong,
+.ci-mean.weak {
+  background: var(--accent);
+}
+
+.flagged {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 /* Chart */
 
 .chart {
@@ -957,11 +1400,46 @@ button.choice.create {
   stroke-linecap: round;
 }
 
-/* The ring in the surface colour keeps each dot legible where it sits on the line. */
-.chart .marker {
+.chart .band {
+  fill: color-mix(in oklab, var(--accent) 16%, transparent);
+}
+
+.chart .interval {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.75;
+}
+
+.chart .dot {
+  fill: var(--fg);
+}
+
+.chart .dot.easy {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+/* The ring in the surface colour keeps the latest dot legible where it sits on the line. */
+.chart .dot.latest {
   fill: var(--accent);
   stroke: var(--surface-raised);
   stroke-width: 2;
+}
+
+.chart .dot.latest.above {
+  fill: var(--accent-2);
+}
+
+.chart .residual {
+  fill: var(--muted);
+}
+
+.chart.compact {
+  min-height: 72px;
+  margin-block: 0.15rem;
 }
 
 .chart-tooltip {
@@ -1025,19 +1503,15 @@ button.choice.create {
     display: none;
   }
 
-  .notices,
-  .rating {
+  .notices {
     bottom: calc(4.75rem + env(safe-area-inset-bottom));
-  }
-
-  .rating {
-    margin-inline: 0.5rem;
   }
 
   .tab-bar {
     position: fixed;
     inset: auto 0 0;
     z-index: 2;
+    height: calc(var(--tab-bar-height) + env(safe-area-inset-bottom));
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     padding: 0.25rem max(0.25rem, env(safe-area-inset-right)) env(safe-area-inset-bottom)
@@ -1065,5 +1539,25 @@ button.choice.create {
   .tab.active {
     color: var(--accent);
     font-weight: 600;
+  }
+
+  /* Above the tab bar, which stays: the dock never takes the way to the other sections. */
+  .dock {
+    bottom: calc(var(--tab-bar-height) + env(safe-area-inset-bottom));
+    height: var(--dock-height);
+    padding-bottom: 0.7rem;
+  }
+
+  main:has(.dock) {
+    padding-bottom: calc(var(--dock-height) + var(--tab-bar-height) + 1.5rem + env(safe-area-inset-bottom));
+  }
+
+  /* Opaque under the dock, so the page does not show through between the two. */
+  body:has(.dock) .tab-bar {
+    background: var(--surface-raised);
+  }
+
+  body:has(.dock) .notices {
+    bottom: calc(var(--dock-height) + var(--tab-bar-height) + 1rem + env(safe-area-inset-bottom));
   }
 }

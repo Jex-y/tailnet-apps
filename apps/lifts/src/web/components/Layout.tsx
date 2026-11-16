@@ -68,12 +68,10 @@ type Props = {
   readonly children: ReactNode;
 };
 
+/** Lifts stands on its own: its header and tab bar lead only to its own sections, never to the other apps. */
 export const Layout = ({ ready, children }: Props) => (
   <>
     <header className="site-header">
-      <a href="/" className="nav-link launcher-link" aria-label="All apps">
-        <Icon name="back" />
-      </a>
       <span className="brand">Lifts</span>
       <nav>
         {SECTIONS.map(({ href, label }) => (
@@ -83,9 +81,6 @@ export const Layout = ({ ready, children }: Props) => (
         ))}
       </nav>
       {ready && <SyncChip />}
-      <a href="/lifts/shell/settings" className="nav-link" aria-label="Settings">
-        <Icon name="settings" />
-      </a>
     </header>
     <main>{children}</main>
     {ready && <Refusal />}

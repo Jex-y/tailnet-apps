@@ -29,7 +29,10 @@ describe("themes", async () => {
   });
 });
 
-test("every page applies the stored theme before first paint", async () => {
+/** A page that pins a theme on its `<html>` keeps a look of its own and never reads the shared one. */
+const pinsItsTheme = (html: string) => /<html[^>]*\sdata-theme="[\w-]+"/.test(html);
+
+test("every page applies the stored theme before first paint, or pins its own", async () => {
   const pages = (
     await Promise.all(
       ["apps/*/src/web/*.html", "packages/core/src/shell/*.html"].map((pattern) =>
@@ -40,6 +43,10 @@ test("every page applies the stored theme before first paint", async () => {
   expect(pages.length).toBeGreaterThan(0);
   for (const page of pages) {
     const html = await Bun.file(page).text();
+    if (pinsItsTheme(html)) {
+      expect(html.indexOf(THEME_BOOT_SCRIPT), page).toBe(-1);
+      continue;
+    }
     expect(html.indexOf(THEME_BOOT_SCRIPT), page).toBeGreaterThan(-1);
     expect(html.indexOf(THEME_BOOT_SCRIPT), page).toBeLessThan(html.indexOf('rel="stylesheet"'));
   }

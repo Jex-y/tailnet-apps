@@ -12,10 +12,10 @@ const MAX_SHARE = [
 type Effort = Pick<LiftSet, "weightKg" | "reps" | "rpe">;
 
 /**
- * The one-rep max a set implies, taking a set without an RPE as all-out. `null` for a missed attempt, and for a set
- * so far from failure that the chart says nothing about it.
+ * The share of a one-rep max a set of `reps` at `rpe` takes, a set without an RPE being all-out. `null` for a missed
+ * attempt, and for a set so far from failure that the chart says nothing about it.
  */
-export const estimatedMax = ({ weightKg, reps, rpe }: Effort): number | null => {
+export const maxShare = (reps: number, rpe: number | null): number | null => {
   if (reps < 1) {
     return null;
   }
@@ -25,8 +25,13 @@ export const estimatedMax = ({ weightKg, reps, rpe }: Effort): number | null => 
   if (below === undefined || above === undefined) {
     return null;
   }
-  const share = below + (above - below) * (repsToFailure - Math.floor(repsToFailure));
-  return weightKg / share;
+  return below + (above - below) * (repsToFailure - Math.floor(repsToFailure));
+};
+
+/** The one-rep max a set implies, by {@link maxShare}. */
+export const estimatedMax = ({ weightKg, reps, rpe }: Effort): number | null => {
+  const share = maxShare(reps, rpe);
+  return share === null ? null : weightKg / share;
 };
 
 export const isWorkSet = (set: Pick<LiftSet, "kind">): boolean => set.kind === "work";

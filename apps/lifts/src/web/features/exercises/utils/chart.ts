@@ -30,10 +30,3 @@ export const niceTicks = (min: number, max: number, count: number): readonly num
   const steps = Math.max(1, Math.ceil((max - first) / step - 1e-9));
   return Array.from({ length: steps + 1 }, (_, index) => first + index * step);
 };
-
-/** Where each date falls between the first and the last, from 0 to 1; a lone date sits in the middle. */
-export const datePositions = (dates: readonly string[]): readonly number[] => {
-  const times = dates.map((date) => Date.parse(date));
-  const [first, last] = [times[0] ?? 0, times.at(-1) ?? 0];
-  return times.map((time) => (last === first ? 0.5 : (time - first) / (last - first)));
-};
