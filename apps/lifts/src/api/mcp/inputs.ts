@@ -10,6 +10,7 @@ export const EntryId = z.uuid().describe("The id of an exercise within a workout
 export const SetId = z.uuid().describe("The set's id, from get_workout");
 
 export const ProgramId = z.uuid().describe("The program's id, from list_programs");
+export const SessionId = z.uuid().describe("The scheduled session's id, from get_schedule");
 export const ProgramDayId = z.uuid().describe("The id of a day in a program, from get_program");
 
 export const PrescriptionInput = z.object({

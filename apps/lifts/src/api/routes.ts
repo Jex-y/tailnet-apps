@@ -31,6 +31,7 @@ export const createLiftsRoutes = ({ service, identity }: LiftsRoutesDeps) => {
     "/lifts/api/program-days": { GET: read(service.programDays) },
     "/lifts/api/program-exercises": { GET: read(service.programExercises) },
     "/lifts/api/prescriptions": { GET: read(service.prescriptions) },
+    "/lifts/api/sessions": { GET: read(service.sessions) },
     "/lifts/api/push": {
       POST: async (request) => {
         const { login } = resolveViewer(identity, request);

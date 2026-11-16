@@ -9,6 +9,7 @@ import type {
   Program,
   ProgramDay,
   ProgramExercise,
+  ScheduledSession,
   TrainingMax,
   Workout,
 } from "../contract";
@@ -23,6 +24,7 @@ import {
   programExercises,
   programs,
   pushes,
+  scheduledSessions,
   sets,
   trainingMaxes,
   workouts,
@@ -35,6 +37,7 @@ import {
   readProgramDays,
   readProgramExercises,
   readPrograms,
+  readSessions,
   readSets,
   readTrainingMaxes,
   readWorkouts,
@@ -261,6 +264,56 @@ const putPrescription = async (tx: Tx, owner: string, { id, load, ...rest }: Pre
   );
 };
 
+const putSession = async (tx: Tx, owner: string, { id, ...session }: ScheduledSession) => {
+  await requireOwn(
+    tx
+      .select({ id: programDays.id })
+      .from(programDays)
+      .where(and(eq(programDays.id, session.programDayId), eq(programDays.owner, owner))),
+    "That program day no longer exists",
+  );
+  const workoutId = session.state === "logged" ? session.workoutId : null;
+  if (workoutId !== null) {
+    await requireOwn(
+      tx
+        .select({ id: workouts.id })
+        .from(workouts)
+        .where(and(eq(workouts.id, workoutId), eq(workouts.owner, owner))),
+      "That workout no longer exists",
+    );
+    const [other] = await tx
+      .select({ id: scheduledSessions.id })
+      .from(scheduledSessions)
+      .where(
+        and(
+          eq(scheduledSessions.owner, owner),
+          eq(scheduledSessions.workoutId, workoutId),
+          ne(scheduledSessions.id, id),
+        ),
+      );
+    if (other !== undefined) {
+      throw new HttpError(409, "That workout already logs another session");
+    }
+  }
+  const fields = { programDayId: session.programDayId, date: session.date, state: session.state, workoutId };
+  requireWritten(
+    await tx
+      .insert(scheduledSessions)
+      .values({ id, owner, ...fields })
+      .onConflictDoUpdate({ target: scheduledSessions.id, set: fields, setWhere: eq(scheduledSessions.owner, owner) })
+      .returning({ id: scheduledSessions.id }),
+  );
+};
+
+/** The session it logged goes back to planned, as if the workout had never been. */
+const deleteWorkout = async (tx: Tx, owner: string, id: string) => {
+  await tx
+    .update(scheduledSessions)
+    .set({ state: "planned", workoutId: null })
+    .where(and(eq(scheduledSessions.owner, owner), eq(scheduledSessions.workoutId, id)));
+  await tx.delete(workouts).where(and(eq(workouts.id, id), eq(workouts.owner, owner)));
+};
+
 const applyOne = async (tx: Tx, owner: string, mutation: Mutation): Promise<void> => {
   switch (mutation.type) {
     case "exercise.put":
@@ -270,8 +323,7 @@ const applyOne = async (tx: Tx, owner: string, mutation: Mutation): Promise<void
     case "workout.put":
       return putWorkout(tx, owner, mutation.row);
     case "workout.delete":
-      await tx.delete(workouts).where(and(eq(workouts.id, mutation.id), eq(workouts.owner, owner)));
-      return;
+      return deleteWorkout(tx, owner, mutation.id);
     case "entry.put":
       return putEntry(tx, owner, mutation.row);
     case "entry.delete":
@@ -309,6 +361,13 @@ const applyOne = async (tx: Tx, owner: string, mutation: Mutation): Promise<void
     case "prescription.delete":
       await tx.delete(prescriptions).where(and(eq(prescriptions.id, mutation.id), eq(prescriptions.owner, owner)));
       return;
+    case "session.put":
+      return putSession(tx, owner, mutation.row);
+    case "session.delete":
+      await tx
+        .delete(scheduledSessions)
+        .where(and(eq(scheduledSessions.id, mutation.id), eq(scheduledSessions.owner, owner)));
+      return;
   }
 };
 
@@ -332,6 +391,7 @@ export const createLiftsService = ({ db }: LiftsServiceDeps) => ({
   programDays: (owner: string) => readProgramDays(db, owner),
   programExercises: (owner: string) => readProgramExercises(db, owner),
   prescriptions: (owner: string) => readPrescriptions(db, owner),
+  sessions: (owner: string) => readSessions(db, owner),
 
   log: async (owner: string): Promise<Log> => ({
     exercises: await readExercises(db, owner),
@@ -346,6 +406,7 @@ export const createLiftsService = ({ db }: LiftsServiceDeps) => ({
     days: await readProgramDays(db, owner),
     exercises: await readProgramExercises(db, owner),
     prescriptions: await readPrescriptions(db, owner),
+    sessions: await readSessions(db, owner),
   }),
 
   /** Applies the changes in order, all or nothing. */

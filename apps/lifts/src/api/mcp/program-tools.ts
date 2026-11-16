@@ -61,8 +61,15 @@ export const registerProgramTools = ({ service, now }: LiftsMcpDeps, server: Mcp
 
   server.registerTool(
     "list_programs",
-    { description: "Reads every program in brief: its weeks and days per week.", annotations: read },
-    () => toolResult(async () => (await programsOf()).programs.map(briefProgram)),
+    {
+      description: "Reads every program in brief: its weeks, their days, and the span it is scheduled over.",
+      annotations: read,
+    },
+    () =>
+      toolResult(async () => {
+        const [{ programs }, sessions] = await Promise.all([programsOf(), service.sessions(owner)]);
+        return programs.map((program) => briefProgram(program, sessions));
+      }),
   );
   server.registerTool(
     "get_program",
@@ -197,7 +204,7 @@ export const registerProgramTools = ({ service, now }: LiftsMcpDeps, server: Mcp
   server.registerTool(
     "remove_program_day",
     {
-      description: "Removes a day from its program. Cannot be undone.",
+      description: "Removes a day from its program, with its sessions. Cannot be undone.",
       inputSchema: { dayId: ProgramDayId },
       annotations: destroy,
     },
@@ -212,7 +219,7 @@ export const registerProgramTools = ({ service, now }: LiftsMcpDeps, server: Mcp
   server.registerTool(
     "delete_program",
     {
-      description: "Deletes a program. Workouts already logged from it stay. Cannot be undone.",
+      description: "Deletes a program and its schedule. Workouts already logged from it stay. Cannot be undone.",
       inputSchema: { programId: ProgramId },
       annotations: destroy,
     },

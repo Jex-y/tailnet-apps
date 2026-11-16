@@ -1,4 +1,4 @@
-import type { LiftSet, Prescription } from "../../contract";
+import type { LiftSet, Prescription, ScheduledSession } from "../../contract";
 import { type EntryDetail, type Log, sessionsOf, type WorkoutDetail, workoutDetails } from "../../log";
 import {
   loadText,
@@ -7,6 +7,7 @@ import {
   type ProgramExerciseDetail,
   resolveLoad,
 } from "../../program";
+import type { SessionStatus } from "../../schedule";
 import { bestEstimate, estimatedMax, isWorkSet, tonnage } from "../../strength";
 import { maxOn } from "../../trend";
 import { round } from "./inputs";
@@ -81,12 +82,20 @@ export const maxesOn = (log: Log, date: string): ReadonlyMap<string, number> => 
 
 const weeksOf = (program: ProgramDetail) => Map.groupBy(program.days, (day) => day.week);
 
-export const briefProgram = (program: ProgramDetail) => ({
-  id: program.id,
-  name: program.name,
-  ...(program.notes !== "" && { notes: program.notes }),
-  weeks: [...weeksOf(program)].map(([week, days]) => ({ week, days: days.map((day) => day.name) })),
-});
+export const briefProgram = (program: ProgramDetail, sessions: readonly ScheduledSession[]) => {
+  const dates = sessions
+    .filter((session) => program.days.some((day) => day.id === session.programDayId))
+    .map((session) => session.date)
+    .toSorted();
+  const [first] = dates;
+  return {
+    id: program.id,
+    name: program.name,
+    ...(program.notes !== "" && { notes: program.notes }),
+    weeks: [...weeksOf(program)].map(([week, days]) => ({ week, days: days.map((day) => day.name) })),
+    ...(first !== undefined && { scheduled: { from: first, to: dates.at(-1) } }),
+  };
+};
 
 const fullPrescription = (prescription: Prescription, kg: number | null) => ({
   prescriptionId: prescription.id,
@@ -134,5 +143,25 @@ export const fullProgram = (program: ProgramDetail, maxes: ReadonlyMap<string, n
       kg: max.kg,
     })),
     weeks: [...weeksOf(program)].map(([week, days]) => ({ week, days: days.map(fullDay(program, maxes)) })),
+  };
+};
+
+export const scheduledSession = (
+  session: ScheduledSession,
+  program: ProgramDetail,
+  status: SessionStatus,
+  maxes: ReadonlyMap<string, number>,
+) => {
+  const day = program.days.find((other) => other.id === session.programDayId);
+  return {
+    sessionId: session.id,
+    date: session.date,
+    status,
+    program: { id: program.id, name: program.name },
+    week: day?.week,
+    day: day?.name,
+    ...(session.state === "logged"
+      ? { workoutId: session.workoutId }
+      : day !== undefined && { exercises: day.exercises.map(fullSlot(program, maxes)) }),
   };
 };

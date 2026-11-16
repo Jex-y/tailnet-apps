@@ -13,13 +13,14 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { COMPETITION_LIFTS, DEFAULT_WEIGHT_STEP_KG, LOAD_KINDS, SET_KINDS } from "../contract";
+import { COMPETITION_LIFTS, DEFAULT_WEIGHT_STEP_KG, LOAD_KINDS, SESSION_STATES, SET_KINDS } from "../contract";
 
 export const liftsSchema = pgSchema("lifts");
 
 export const competitionLift = liftsSchema.enum("competition_lift", COMPETITION_LIFTS);
 export const setKind = liftsSchema.enum("set_kind", SET_KINDS);
 export const loadKind = liftsSchema.enum("load_kind", LOAD_KINDS);
+export const sessionState = liftsSchema.enum("session_state", SESSION_STATES);
 
 const instant = (name: string) => timestamp(name, { withTimezone: true });
 const kilograms = (name: string) => numeric(name, { precision: 6, scale: 2, mode: "number" });
@@ -208,6 +209,29 @@ export const prescriptions = liftsSchema.table(
           when 'rpe' then ${table.loadRpe} is not null
         end`,
     ),
+  ],
+);
+
+/** A workout logging a session cannot be deleted until the session lets go of it. */
+export const scheduledSessions = liftsSchema.table(
+  "scheduled_sessions",
+  {
+    ...identity(),
+    programDayId: uuid("program_day_id").notNull(),
+    date: date("date", { mode: "string" }).notNull(),
+    state: sessionState("state").notNull(),
+    workoutId: uuid("workout_id"),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.owner, table.programDayId],
+      foreignColumns: [programDays.owner, programDays.id],
+    }).onDelete("cascade"),
+    foreignKey({ columns: [table.owner, table.workoutId], foreignColumns: [workouts.owner, workouts.id] }),
+    unique().on(table.owner, table.workoutId),
+    index().on(table.owner, table.date),
+    index().on(table.owner, table.programDayId),
+    check("workout_only_when_logged", sql`(${table.workoutId} is not null) = (${table.state} = 'logged')`),
   ],
 );
 

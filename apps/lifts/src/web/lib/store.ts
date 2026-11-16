@@ -27,6 +27,8 @@ import {
   type ProgramExercise,
   ProgramExerciseList,
   ProgramList,
+  type ScheduledSession,
+  ScheduledSessionList,
   type TrainingMax,
   TrainingMaxList,
   type Workout,
@@ -44,6 +46,7 @@ const ROWS = {
   programDays: { path: "program-days", row: "programDay" },
   programExercises: { path: "program-exercises", row: "programExercise" },
   prescriptions: { path: "prescriptions", row: "prescription" },
+  sessions: { path: "sessions", row: "session" },
 } as const;
 type CollectionName = keyof typeof ROWS;
 
@@ -154,6 +157,7 @@ export type Store = {
   readonly programDays: Collection<ProgramDay, string>;
   readonly programExercises: Collection<ProgramExercise, string>;
   readonly prescriptions: Collection<Prescription, string>;
+  readonly sessions: Collection<ScheduledSession, string>;
   /** Where a change made without a connection is kept until it can be sent. */
   readonly durability: () => Durability;
   /**
@@ -216,6 +220,7 @@ export const openStore = async (): Promise<Store> => {
     programDays: collection("programDays", ProgramDayList),
     programExercises: collection("programExercises", ProgramExerciseList),
     prescriptions: collection("prescriptions", PrescriptionList),
+    sessions: collection("sessions", ScheduledSessionList),
   };
 
   const executor = startOfflineExecutor({

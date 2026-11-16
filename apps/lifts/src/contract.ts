@@ -124,6 +124,18 @@ export const Prescription = z.object({
 });
 export type Prescription = z.infer<typeof Prescription>;
 
+export const SESSION_STATES = ["planned", "skipped", "logged"] as const;
+
+const SessionBase = z.object({ id: Id, programDayId: Id, date: LocalDate });
+
+/** A program day given a date. Only a logged session has a workout, and each workout logs at most one session. */
+export const ScheduledSession = z.discriminatedUnion("state", [
+  SessionBase.extend({ state: z.literal("planned") }),
+  SessionBase.extend({ state: z.literal("skipped") }),
+  SessionBase.extend({ state: z.literal("logged"), workoutId: Id }),
+]);
+export type ScheduledSession = z.infer<typeof ScheduledSession>;
+
 export const ExerciseList = z.array(Exercise);
 export const WorkoutList = z.array(Workout);
 export const EntryList = z.array(Entry);
@@ -133,6 +145,7 @@ export const TrainingMaxList = z.array(TrainingMax);
 export const ProgramDayList = z.array(ProgramDay);
 export const ProgramExerciseList = z.array(ProgramExercise);
 export const PrescriptionList = z.array(Prescription);
+export const ScheduledSessionList = z.array(ScheduledSession);
 
 const put = <T extends string, R extends z.ZodType>(type: T, row: R) => z.object({ type: z.literal(type), row });
 const remove = <T extends string>(type: T) => z.object({ type: z.literal(type), id: Id });
@@ -160,6 +173,8 @@ export const Mutation = z.discriminatedUnion("type", [
   remove("programExercise.delete"),
   put("prescription.put", Prescription),
   remove("prescription.delete"),
+  put("session.put", ScheduledSession),
+  remove("session.delete"),
 ]);
 export type Mutation = z.infer<typeof Mutation>;
 

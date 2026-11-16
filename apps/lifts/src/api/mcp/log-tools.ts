@@ -1,4 +1,4 @@
-import { type McpServer, toolResult } from "@apps/core";
+import { HttpError, type McpServer, toolResult } from "@apps/core";
 import { z } from "zod";
 import {
   COMPETITION_LIFTS,
@@ -23,6 +23,7 @@ import {
   notFound,
   read,
   round,
+  SessionId,
   SetId,
   SetInput,
   WorkoutId,
@@ -199,8 +200,10 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
   server.registerTool(
     "log_workout",
     {
-      description: "Records a whole workout: its exercises in order, each with its sets in order.",
+      description:
+        "Records a whole workout: its exercises in order, each with its sets in order. With a sessionId, the workout logs that scheduled session.",
       inputSchema: {
+        sessionId: SessionId.optional(),
         date: Workout.shape.date.describe("The training day, YYYY-MM-DD"),
         notes: Workout.shape.notes.default(""),
         bodyweightKg: Workout.shape.bodyweightKg.default(null),
@@ -209,12 +212,33 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
       },
       annotations: change,
     },
-    ({ finished, exercises, ...workout }) =>
+    ({ sessionId, finished, exercises, ...workout }) =>
       toolResult(async () => {
         const id = crypto.randomUUID();
+        const session =
+          sessionId === undefined
+            ? undefined
+            : ((await service.sessions(owner)).find((other) => other.id === sessionId) ?? notFound());
+        if (session?.state === "logged") {
+          throw new HttpError(409, "That session is already logged");
+        }
         await service.apply(owner, [
           { type: "workout.put", row: { id, ...workout, finishedAt: finished ? now().toISOString() : null } },
           ...entriesFor(id, exercises),
+          ...(session === undefined
+            ? []
+            : [
+                {
+                  type: "session.put",
+                  row: {
+                    id: session.id,
+                    programDayId: session.programDayId,
+                    date: session.date,
+                    state: "logged",
+                    workoutId: id,
+                  },
+                } satisfies Mutation,
+              ]),
         ]);
         return workoutOf(id);
       }),

@@ -15,6 +15,13 @@
       "when": 1794840142674,
       "tag": "0001_add_programs",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794840462731,
+      "tag": "0002_schedule_programs",
+      "breakpoints": true
     }
   ]
 }

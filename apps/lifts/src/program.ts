@@ -6,6 +6,7 @@ import type {
   Program,
   ProgramDay,
   ProgramExercise,
+  ScheduledSession,
   TrainingMax,
 } from "./contract";
 import { byPosition } from "./log";
@@ -18,6 +19,7 @@ export type Plan = {
   readonly days: readonly ProgramDay[];
   readonly exercises: readonly ProgramExercise[];
   readonly prescriptions: readonly Prescription[];
+  readonly sessions: readonly ScheduledSession[];
 };
 
 export type ProgramExerciseDetail = ProgramExercise & {

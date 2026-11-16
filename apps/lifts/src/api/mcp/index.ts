@@ -2,6 +2,7 @@ import type { AppMcp } from "@apps/core";
 import type { LiftsService } from "../service";
 import { registerLogTools } from "./log-tools";
 import { registerProgramTools } from "./program-tools";
+import { registerScheduleTools } from "./schedule-tools";
 
 export type LiftsMcpDeps = {
   readonly service: LiftsService;
@@ -20,7 +21,10 @@ const INSTRUCTIONS = `The connected person's own strength training log.
 - A program is weeks of days. Each day lists exercises, each with prescriptions: a number of sets of the same reps
   and load. A load is a fixed weight, a percentage of the program's training max for the exercise, or a target RPE
   worked out from the exercise's estimated max on the day. Worked-out weights round down to the exercise's weight
-  step, 2.5 kg unless set. Every change to a program answers with that program as it now is.`;
+  step, 2.5 kg unless set. Every change to a program answers with that program as it now is.
+- Scheduling a program dates each of its days as a session. A session is planned, skipped or logged by a workout;
+  log_workout with its sessionId logs it. A planned session is due on its day and late after it, until it is moved,
+  skipped or logged.`;
 
 /** Acts on the connected person's own log only. */
 export const createLiftsMcp = (deps: LiftsMcpDeps): AppMcp => ({
@@ -29,5 +33,6 @@ export const createLiftsMcp = (deps: LiftsMcpDeps): AppMcp => ({
   registerTools: (server, viewer) => {
     registerLogTools(deps, server, viewer.login);
     registerProgramTools(deps, server, viewer.login);
+    registerScheduleTools(deps, server, viewer.login);
   },
 });

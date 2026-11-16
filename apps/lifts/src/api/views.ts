@@ -8,6 +8,7 @@ import type {
   Program,
   ProgramDay,
   ProgramExercise,
+  ScheduledSession,
   TrainingMax,
   Workout,
 } from "../contract";
@@ -19,6 +20,7 @@ import {
   programDays,
   programExercises,
   programs,
+  scheduledSessions,
   sets,
   trainingMaxes,
   workouts,
@@ -171,4 +173,23 @@ export const readPrescriptions = async (db: LiftsReader, owner: string): Promise
     ...row,
     load: loadOf({ loadKind, loadKg, loadPercent, loadRpe }),
   }));
+};
+
+export const readSessions = async (db: LiftsReader, owner: string): Promise<ScheduledSession[]> => {
+  const rows = await db
+    .select({
+      id: scheduledSessions.id,
+      programDayId: scheduledSessions.programDayId,
+      date: scheduledSessions.date,
+      state: scheduledSessions.state,
+      workoutId: scheduledSessions.workoutId,
+    })
+    .from(scheduledSessions)
+    .where(eq(scheduledSessions.owner, owner))
+    .orderBy(asc(scheduledSessions.date), asc(scheduledSessions.id));
+  return rows.map(
+    ({ workoutId, state, ...row }): ScheduledSession =>
+      // The table's check constraint guarantees a logged session has its workout.
+      state === "logged" ? { ...row, state, workoutId: workoutId ?? "" } : { ...row, state },
+  );
 };

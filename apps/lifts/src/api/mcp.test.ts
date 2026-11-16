@@ -23,7 +23,7 @@ type ProgramSlot = { exercise: { name: string }; prescriptions: ProgramPrescript
 type ProgramDay = { dayId: string; name: string; exercises: ProgramSlot[] };
 type FullProgram = {
   id: string;
-  trainingMaxes: { exerciseId: string; kg: number }[];
+  trainingMaxes: { exerciseId: string; name?: string; kg: number }[];
   weeks: { week: number; days: ProgramDay[] }[];
 };
 
@@ -37,6 +37,15 @@ const prescribed = (program: FullProgram) =>
       ),
     ),
   }));
+
+type Scheduled = {
+  sessionId: string;
+  date: string;
+  status: string;
+  day: string;
+  workoutId?: string;
+  exercises?: ProgramSlot[];
+};
 
 type History = { exercise: object; bestEstimatedMax: object | null; repRecords: object[]; sessions: object[] };
 
@@ -65,7 +74,7 @@ describe("lifts mcp", () => {
     expect(response.status).toBe(401);
   });
 
-  test("offers tools for exercises, workouts, sets and programs", async () => {
+  test("offers tools for exercises, workouts, sets, programs and schedules", async () => {
     const client = await connect();
     const { tools } = await client.listTools();
 
@@ -80,16 +89,21 @@ describe("lifts mcp", () => {
       "delete_workout",
       "get_exercise_history",
       "get_program",
+      "get_schedule",
       "get_workout",
       "list_exercises",
       "list_programs",
       "list_workouts",
       "log_set",
       "log_workout",
+      "move_session",
       "put_program_day",
       "remove_program_day",
       "remove_workout_exercise",
+      "schedule_program",
       "set_training_max",
+      "skip_session",
+      "unschedule_program",
       "update_exercise",
       "update_program",
       "update_set",
@@ -319,5 +333,79 @@ describe("lifts mcp", () => {
     await call(client, "delete_program", { programId: program.id });
     expect(await call<object[]>(client, "list_programs")).toEqual([]);
     expect((await callTool(client, "delete_exercise", { exerciseId: bench })).isError).toBe(false);
+  });
+
+  test("schedules a program, and tracks each session until a workout logs it", async () => {
+    const client = await connect();
+    const squat = await createExercise(client, "Squat", "squat");
+    await call(client, "log_workout", {
+      date: "2026-09-24",
+      exercises: [{ exerciseId: squat, sets: [{ weightKg: 140, reps: 5, rpe: 8 }] }],
+    });
+    const program = await call<FullProgram>(client, "create_program", {
+      name: "Two a week",
+      days: [
+        {
+          week: 1,
+          name: "A",
+          exercises: [
+            { exerciseId: squat, prescriptions: [{ sets: 3, reps: 5, load: { kind: "percent", percent: 75 } }] },
+          ],
+        },
+        {
+          week: 1,
+          name: "B",
+          exercises: [{ exerciseId: squat, prescriptions: [{ sets: 3, reps: 3, load: { kind: "rpe", rpe: 8 } }] }],
+        },
+      ],
+    });
+    await call(client, "copy_program_week", { programId: program.id, fromWeek: 1, toWeek: 2 });
+    const schedule = { programId: program.id, startsOn: "2026-09-28" };
+
+    expect(await callTool(client, "schedule_program", { ...schedule, weekdays: ["mon"] })).toEqual({
+      isError: true,
+      text: "A week of this program has 2 days, so it needs that many weekdays",
+    });
+    const sessions = await call<Scheduled[]>(client, "schedule_program", { ...schedule, weekdays: ["thu", "mon"] });
+    const brief = (rows: Scheduled[]) => rows.map(({ date, status, day }) => `${date} ${day} ${status}`);
+    expect(brief(sessions)).toEqual([
+      "2026-09-28 A late",
+      "2026-10-01 B due",
+      "2026-10-05 A upcoming",
+      "2026-10-08 B upcoming",
+    ]);
+    expect(sessions[0]?.exercises?.[0]?.prescriptions).toEqual([
+      expect.objectContaining({ text: "3×5 75%", kgToday: 127.5 }),
+    ]);
+    expect((await call<FullProgram>(client, "get_program", { programId: program.id })).trainingMaxes).toEqual([
+      { exerciseId: squat, name: "Squat", kg: 172.5 },
+    ]);
+    expect(await callTool(client, "schedule_program", { ...schedule, weekdays: ["mon", "thu"] })).toEqual({
+      isError: true,
+      text: "That program is already scheduled; unschedule it first",
+    });
+
+    const [late, due, nextA] = sessions;
+    await call(client, "skip_session", { sessionId: late?.sessionId });
+    await call(client, "move_session", { sessionId: nextA?.sessionId, date: "2026-10-06", shiftLater: true });
+    const workout = await call<FullWorkout>(client, "log_workout", { date: "2026-10-01", sessionId: due?.sessionId });
+    expect(brief(await call<Scheduled[]>(client, "get_schedule"))).toEqual([
+      "2026-09-28 A skipped",
+      "2026-10-01 B done",
+      "2026-10-06 A upcoming",
+      "2026-10-09 B upcoming",
+    ]);
+    expect(await callTool(client, "log_workout", { date: "2026-10-01", sessionId: due?.sessionId })).toEqual({
+      isError: true,
+      text: "That session is already logged",
+    });
+
+    await call(client, "delete_workout", { workoutId: workout.id });
+    expect(brief(await call<Scheduled[]>(client, "get_schedule", { to: "2026-10-01" }))).toEqual([
+      "2026-09-28 A skipped",
+      "2026-10-01 B due",
+    ]);
+    expect(await call<object>(client, "unschedule_program", { programId: program.id })).toEqual({ unscheduled: 4 });
+    expect(await call<Scheduled[]>(client, "get_schedule")).toEqual([]);
   });
 });
