@@ -1,109 +1,26 @@
-import { type AppMcp, HttpError, type McpServer, toolResult } from "@apps/core";
+import { type McpServer, toolResult } from "@apps/core";
 import { z } from "zod";
-import { COMPETITION_LIFTS, Entry, Exercise, LiftSet, type Mutation, SET_KINDS, Workout } from "../contract";
-import { type EntryDetail, type Log, nextPosition, sessionsOf, type WorkoutDetail, workoutDetails } from "../log";
-import { bestEstimate, estimatedMax, isWorkSet, repRecords, tonnage } from "../strength";
-import type { LiftsService } from "./service";
+import { COMPETITION_LIFTS, Entry, Exercise, LiftSet, type Mutation, SET_KINDS, Workout } from "../../contract";
+import { nextPosition, sessionsOf, workoutDetails } from "../../log";
+import { bestEstimate, repRecords } from "../../strength";
+import type { LiftsMcpDeps } from "./index";
+import {
+  change,
+  destroy,
+  EntryId,
+  EntryInput,
+  ExerciseId,
+  edit,
+  notFound,
+  read,
+  round,
+  SetId,
+  SetInput,
+  WorkoutId,
+} from "./inputs";
+import { briefWorkout, exerciseSummaries, fullWorkout, maxOf, setText } from "./render";
 
-export type LiftsMcpDeps = {
-  readonly service: LiftsService;
-  readonly now: () => Date;
-};
-
-const INSTRUCTIONS = `The connected person's own strength training log.
-
-- A workout is one training day. It holds exercises in order, and each of those holds its sets in order.
-- A set is a weight in kilograms, reps, an optional RPE (1 to 10 in half steps) and a kind: warmup or work. Zero reps
-  records a missed attempt. Warm-ups never count towards estimated maxes, records or tonnage.
-- Estimated one-rep maxes come from the RPE chart, taking a set without an RPE as all-out.
-- An exercise may stand for one competition lift (squat, bench or deadlift); at most one exercise can stand for each.
-- Ids are UUIDs: find exercises with list_exercises, workouts with list_workouts, and the ids of a workout's
-  exercises and sets with get_workout. Every change to a workout answers with that workout as it now is.`;
-
-const round = (value: number) => Math.round(value * 10) / 10;
-
-const WorkoutId = z.uuid().describe("The workout's id");
-const ExerciseId = z.uuid().describe("The exercise's id, from list_exercises");
-const EntryId = z.uuid().describe("The id of an exercise within a workout, from get_workout");
-const SetId = z.uuid().describe("The set's id, from get_workout");
-
-const SetInput = z.object({
-  weightKg: LiftSet.shape.weightKg,
-  reps: LiftSet.shape.reps,
-  rpe: LiftSet.shape.rpe.default(null),
-  kind: LiftSet.shape.kind.default("work"),
-});
-type SetInput = z.infer<typeof SetInput>;
-
-const EntryInput = z.object({
-  exerciseId: ExerciseId,
-  notes: Entry.shape.notes.default(""),
-  sets: z.array(SetInput).max(100).default([]),
-});
-type EntryInput = z.infer<typeof EntryInput>;
-
-const setText = (set: LiftSet) =>
-  `${set.weightKg}×${set.reps}${set.rpe === null ? "" : ` @${set.rpe}`}${isWorkSet(set) ? "" : " (warm-up)"}`;
-
-const maxOf = (sets: readonly LiftSet[]) => {
-  const best = bestEstimate(sets);
-  return best === null ? null : round(best.maxKg);
-};
-
-const briefWorkout = (workout: WorkoutDetail) => ({
-  id: workout.id,
-  date: workout.date,
-  finished: workout.finishedAt !== null,
-  ...(workout.bodyweightKg !== null && { bodyweightKg: workout.bodyweightKg }),
-  ...(workout.notes !== "" && { notes: workout.notes }),
-  exercises: workout.entries.map((entry) => ({ name: entry.exercise.name, sets: entry.sets.map(setText) })),
-});
-
-const fullEntry = (entry: EntryDetail) => ({
-  entryId: entry.id,
-  exercise: { id: entry.exercise.id, name: entry.exercise.name },
-  ...(entry.notes !== "" && { notes: entry.notes }),
-  sets: entry.sets.map((set) => {
-    const maxKg = isWorkSet(set) ? estimatedMax(set) : null;
-    return {
-      setId: set.id,
-      weightKg: set.weightKg,
-      reps: set.reps,
-      rpe: set.rpe,
-      kind: set.kind,
-      ...(maxKg !== null && { estimatedMaxKg: round(maxKg) }),
-    };
-  }),
-});
-
-const fullWorkout = (workout: WorkoutDetail) => ({
-  id: workout.id,
-  date: workout.date,
-  finishedAt: workout.finishedAt,
-  bodyweightKg: workout.bodyweightKg,
-  notes: workout.notes,
-  tonnageKg: round(tonnage(workout.entries.flatMap((entry) => entry.sets))),
-  exercises: workout.entries.map(fullEntry),
-});
-
-const exerciseSummaries = (log: Log) => {
-  const workouts = workoutDetails(log);
-  return log.exercises.map((exercise) => {
-    const sessions = sessionsOf(workouts, exercise.id);
-    return {
-      ...exercise,
-      sessions: sessions.length,
-      lastTrainedOn: sessions.at(-1)?.workout.date ?? null,
-      bestEstimatedMaxKg: maxOf(sessions.flatMap((session) => session.sets)),
-    };
-  });
-};
-
-const notFound = (): never => {
-  throw new HttpError(404, "Not found");
-};
-
-const registerTools = ({ service, now }: LiftsMcpDeps, server: McpServer, owner: string) => {
+export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServer, owner: string) => {
   const workoutOf = async (workoutId: string) =>
     fullWorkout(workoutDetails(await service.log(owner)).find((workout) => workout.id === workoutId) ?? notFound());
 
@@ -121,11 +38,6 @@ const registerTools = ({ service, now }: LiftsMcpDeps, server: McpServer, owner:
         ...setsFor(id, sets),
       ];
     });
-
-  const read = { readOnlyHint: true, openWorldHint: false } as const;
-  const change = { readOnlyHint: false, destructiveHint: false, openWorldHint: false } as const;
-  const edit = { ...change, idempotentHint: true } as const;
-  const destroy = { ...change, destructiveHint: true } as const;
 
   server.registerTool(
     "list_exercises",
@@ -453,9 +365,3 @@ const registerTools = ({ service, now }: LiftsMcpDeps, server: McpServer, owner:
       }),
   );
 };
-
-/** Acts on the connected person's own log only. */
-export const createLiftsMcp = (deps: LiftsMcpDeps): AppMcp => ({
-  instructions: INSTRUCTIONS,
-  registerTools: (server, viewer) => registerTools(deps, server, viewer.login),
-});
