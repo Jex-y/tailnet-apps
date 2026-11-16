@@ -3,10 +3,10 @@ import type { Exercise, LiftSet } from "../../../../contract";
 import type { WorkoutDetail } from "../../../../log";
 import { missingLifts, standings, summarise } from "./lifts";
 
-const squat: Exercise = { id: "squat", name: "Squat", lift: "squat" };
-const bench: Exercise = { id: "bench", name: "Bench press", lift: "bench" };
-const deadlift: Exercise = { id: "deadlift", name: "Deadlift", lift: "deadlift" };
-const curl: Exercise = { id: "curl", name: "Curl", lift: null };
+const squat: Exercise = { id: "squat", name: "Squat", lift: "squat", weightStepKg: 2.5 };
+const bench: Exercise = { id: "bench", name: "Bench press", lift: "bench", weightStepKg: 2.5 };
+const deadlift: Exercise = { id: "deadlift", name: "Deadlift", lift: "deadlift", weightStepKg: 2.5 };
+const curl: Exercise = { id: "curl", name: "Curl", lift: null, weightStepKg: 2.5 };
 
 const set = (weightKg: number, reps: number): LiftSet => ({
   id: crypto.randomUUID(),

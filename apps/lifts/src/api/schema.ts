@@ -13,12 +13,13 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { COMPETITION_LIFTS, SET_KINDS } from "../contract";
+import { COMPETITION_LIFTS, DEFAULT_WEIGHT_STEP_KG, LOAD_KINDS, SET_KINDS } from "../contract";
 
 export const liftsSchema = pgSchema("lifts");
 
 export const competitionLift = liftsSchema.enum("competition_lift", COMPETITION_LIFTS);
 export const setKind = liftsSchema.enum("set_kind", SET_KINDS);
+export const loadKind = liftsSchema.enum("load_kind", LOAD_KINDS);
 
 const instant = (name: string) => timestamp(name, { withTimezone: true });
 const kilograms = (name: string) => numeric(name, { precision: 6, scale: 2, mode: "number" });
@@ -38,9 +39,16 @@ export const exercises = liftsSchema.table(
     ...identity(),
     name: text("name").notNull(),
     lift: competitionLift("lift"),
+    weightStepKg: numeric("weight_step_kg", { precision: 4, scale: 2, mode: "number" })
+      .notNull()
+      .default(DEFAULT_WEIGHT_STEP_KG),
     createdAt: instant("created_at").notNull().defaultNow(),
   },
-  (table) => [unique().on(table.owner, table.id), unique().on(table.owner, table.lift)],
+  (table) => [
+    unique().on(table.owner, table.id),
+    unique().on(table.owner, table.lift),
+    check("weight_step_positive", sql`${table.weightStepKg} > 0`),
+  ],
 );
 
 export const workouts = liftsSchema.table(
@@ -96,6 +104,110 @@ export const sets = liftsSchema.table(
     check("weight_not_negative", sql`${table.weightKg} >= 0`),
     check("reps_not_negative", sql`${table.reps} >= 0`),
     check("rpe_in_half_steps", sql`${table.rpe} between 1 and 10 and ${table.rpe} * 2 = trunc(${table.rpe} * 2)`),
+  ],
+);
+
+export const programs = liftsSchema.table(
+  "programs",
+  {
+    ...identity(),
+    name: text("name").notNull(),
+    notes: text("notes").notNull().default(""),
+    createdAt: instant("created_at").notNull().defaultNow(),
+  },
+  (table) => [unique().on(table.owner, table.id)],
+);
+
+export const trainingMaxes = liftsSchema.table(
+  "training_maxes",
+  {
+    ...identity(),
+    programId: uuid("program_id").notNull(),
+    exerciseId: uuid("exercise_id").notNull(),
+    kg: kilograms("kg").notNull(),
+  },
+  (table) => [
+    unique().on(table.owner, table.programId, table.exerciseId),
+    foreignKey({ columns: [table.owner, table.programId], foreignColumns: [programs.owner, programs.id] }).onDelete(
+      "cascade",
+    ),
+    foreignKey({ columns: [table.owner, table.exerciseId], foreignColumns: [exercises.owner, exercises.id] }),
+    check("training_max_positive", sql`${table.kg} > 0`),
+  ],
+);
+
+export const programDays = liftsSchema.table(
+  "program_days",
+  {
+    ...identity(),
+    programId: uuid("program_id").notNull(),
+    week: integer("week").notNull(),
+    position: integer("position").notNull(),
+    name: text("name").notNull(),
+  },
+  (table) => [
+    unique().on(table.owner, table.id),
+    foreignKey({ columns: [table.owner, table.programId], foreignColumns: [programs.owner, programs.id] }).onDelete(
+      "cascade",
+    ),
+    index().on(table.owner, table.programId),
+    check("week_positive", sql`${table.week} >= 1`),
+  ],
+);
+
+export const programExercises = liftsSchema.table(
+  "program_exercises",
+  {
+    ...identity(),
+    programDayId: uuid("program_day_id").notNull(),
+    exerciseId: uuid("exercise_id").notNull(),
+    position: integer("position").notNull(),
+    notes: text("notes").notNull().default(""),
+  },
+  (table) => [
+    unique().on(table.owner, table.id),
+    foreignKey({
+      columns: [table.owner, table.programDayId],
+      foreignColumns: [programDays.owner, programDays.id],
+    }).onDelete("cascade"),
+    foreignKey({ columns: [table.owner, table.exerciseId], foreignColumns: [exercises.owner, exercises.id] }),
+    index().on(table.owner, table.programDayId),
+    index().on(table.owner, table.exerciseId),
+  ],
+);
+
+/** A load is stored as its kind and exactly the one column that kind reads. */
+export const prescriptions = liftsSchema.table(
+  "prescriptions",
+  {
+    ...identity(),
+    programExerciseId: uuid("program_exercise_id").notNull(),
+    position: integer("position").notNull(),
+    sets: integer("sets").notNull(),
+    reps: integer("reps").notNull(),
+    loadKind: loadKind("load_kind").notNull(),
+    loadKg: kilograms("load_kg"),
+    loadPercent: numeric("load_percent", { precision: 4, scale: 1, mode: "number" }),
+    loadRpe: numeric("load_rpe", { precision: 3, scale: 1, mode: "number" }),
+    kind: setKind("kind").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.owner, table.programExerciseId],
+      foreignColumns: [programExercises.owner, programExercises.id],
+    }).onDelete("cascade"),
+    index().on(table.owner, table.programExerciseId),
+    check("sets_positive", sql`${table.sets} >= 1`),
+    check("reps_positive", sql`${table.reps} >= 1`),
+    check(
+      "load_matches_kind",
+      sql`(${table.loadKg} is not null)::int + (${table.loadPercent} is not null)::int + (${table.loadRpe} is not null)::int = 1
+        and case ${table.loadKind}
+          when 'kg' then ${table.loadKg} is not null
+          when 'percent' then ${table.loadPercent} is not null
+          when 'rpe' then ${table.loadRpe} is not null
+        end`,
+    ),
   ],
 );
 

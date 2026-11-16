@@ -1,6 +1,6 @@
 import { HttpError } from "@apps/core";
 import { z } from "zod";
-import { Entry, LiftSet } from "../../contract";
+import { Entry, LiftSet, Load, Prescription, Program, ProgramDay, ProgramExercise, TrainingMax } from "../../contract";
 
 export const round = (value: number) => Math.round(value * 10) / 10;
 
@@ -8,6 +8,36 @@ export const WorkoutId = z.uuid().describe("The workout's id");
 export const ExerciseId = z.uuid().describe("The exercise's id, from list_exercises");
 export const EntryId = z.uuid().describe("The id of an exercise within a workout, from get_workout");
 export const SetId = z.uuid().describe("The set's id, from get_workout");
+
+export const ProgramId = z.uuid().describe("The program's id, from list_programs");
+export const ProgramDayId = z.uuid().describe("The id of a day in a program, from get_program");
+
+export const PrescriptionInput = z.object({
+  sets: Prescription.shape.sets.default(1),
+  reps: Prescription.shape.reps,
+  load: Load.describe(
+    "kg: a fixed weight; percent: of the program's training max for the exercise; rpe: worked out from the exercise's estimated max on the day",
+  ),
+  kind: Prescription.shape.kind.default("work"),
+});
+export type PrescriptionInput = z.infer<typeof PrescriptionInput>;
+
+export const ProgramExerciseInput = z.object({
+  exerciseId: ExerciseId,
+  notes: ProgramExercise.shape.notes.default(""),
+  prescriptions: z.array(PrescriptionInput).min(1).max(20),
+});
+
+export const ProgramDayInput = z.object({
+  week: ProgramDay.shape.week,
+  name: ProgramDay.shape.name,
+  exercises: z.array(ProgramExerciseInput).max(30),
+});
+export type ProgramDayInput = z.infer<typeof ProgramDayInput>;
+
+export const TrainingMaxInput = z.object({ exerciseId: ExerciseId, kg: TrainingMax.shape.kg });
+
+export const ProgramFields = { name: Program.shape.name, notes: Program.shape.notes };
 
 export const SetInput = z.object({
   weightKg: LiftSet.shape.weightKg,

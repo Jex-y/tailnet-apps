@@ -76,3 +76,13 @@ export const trendOver = (points: readonly TrendPoint[], today: string, weeks: n
         })();
   return { points: placed, fit, latest };
 };
+
+/**
+ * The max an exercise's sessions put it at on `date`: where the trend over the default window says, with at least
+ * three sessions in it, otherwise the best estimate of any session up to then.
+ */
+export const maxOn = (sessions: readonly Session[], date: string): number | null => {
+  const before = sessions.filter(({ workout }) => workout.date <= date);
+  const fit = trendOver(trend(before), date, DEFAULT_WINDOW.weeks).fit;
+  return fit?.at(0) ?? bestEstimate(before.flatMap(({ sets }) => sets))?.maxKg ?? null;
+};

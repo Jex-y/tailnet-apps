@@ -1,6 +1,7 @@
 import type { AppMcp } from "@apps/core";
 import type { LiftsService } from "../service";
 import { registerLogTools } from "./log-tools";
+import { registerProgramTools } from "./program-tools";
 
 export type LiftsMcpDeps = {
   readonly service: LiftsService;
@@ -15,11 +16,18 @@ const INSTRUCTIONS = `The connected person's own strength training log.
 - Estimated one-rep maxes come from the RPE chart, taking a set without an RPE as all-out.
 - An exercise may stand for one competition lift (squat, bench or deadlift); at most one exercise can stand for each.
 - Ids are UUIDs: find exercises with list_exercises, workouts with list_workouts, and the ids of a workout's
-  exercises and sets with get_workout. Every change to a workout answers with that workout as it now is.`;
+  exercises and sets with get_workout. Every change to a workout answers with that workout as it now is.
+- A program is weeks of days. Each day lists exercises, each with prescriptions: a number of sets of the same reps
+  and load. A load is a fixed weight, a percentage of the program's training max for the exercise, or a target RPE
+  worked out from the exercise's estimated max on the day. Worked-out weights round down to the exercise's weight
+  step, 2.5 kg unless set. Every change to a program answers with that program as it now is.`;
 
 /** Acts on the connected person's own log only. */
 export const createLiftsMcp = (deps: LiftsMcpDeps): AppMcp => ({
   instructions: INSTRUCTIONS,
   listing: "own",
-  registerTools: (server, viewer) => registerLogTools(deps, server, viewer.login),
+  registerTools: (server, viewer) => {
+    registerLogTools(deps, server, viewer.login);
+    registerProgramTools(deps, server, viewer.login);
+  },
 });

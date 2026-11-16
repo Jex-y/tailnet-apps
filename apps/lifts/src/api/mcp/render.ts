@@ -1,6 +1,14 @@
-import type { LiftSet } from "../../contract";
+import type { LiftSet, Prescription } from "../../contract";
 import { type EntryDetail, type Log, sessionsOf, type WorkoutDetail, workoutDetails } from "../../log";
+import {
+  loadText,
+  type ProgramDayDetail,
+  type ProgramDetail,
+  type ProgramExerciseDetail,
+  resolveLoad,
+} from "../../program";
 import { bestEstimate, estimatedMax, isWorkSet, tonnage } from "../../strength";
+import { maxOn } from "../../trend";
 import { round } from "./inputs";
 
 export const setText = (set: LiftSet) =>
@@ -58,4 +66,73 @@ export const exerciseSummaries = (log: Log) => {
       bestEstimatedMaxKg: maxOf(sessions.flatMap((session) => session.sets)),
     };
   });
+};
+
+/** Each exercise's estimated max on `date`, for loads worked out from it. */
+export const maxesOn = (log: Log, date: string): ReadonlyMap<string, number> => {
+  const workouts = workoutDetails(log);
+  return new Map(
+    log.exercises.flatMap((exercise) => {
+      const maxKg = maxOn(sessionsOf(workouts, exercise.id), date);
+      return maxKg === null ? [] : [[exercise.id, maxKg] as const];
+    }),
+  );
+};
+
+const weeksOf = (program: ProgramDetail) => Map.groupBy(program.days, (day) => day.week);
+
+export const briefProgram = (program: ProgramDetail) => ({
+  id: program.id,
+  name: program.name,
+  ...(program.notes !== "" && { notes: program.notes }),
+  weeks: [...weeksOf(program)].map(([week, days]) => ({ week, days: days.map((day) => day.name) })),
+});
+
+const fullPrescription = (prescription: Prescription, kg: number | null) => ({
+  prescriptionId: prescription.id,
+  sets: prescription.sets,
+  reps: prescription.reps,
+  kind: prescription.kind,
+  load: prescription.load,
+  text: `${prescription.sets}×${prescription.reps} ${loadText(prescription.load)}${prescription.kind === "warmup" ? " (warm-up)" : ""}`,
+  ...(kg !== null && { kgToday: kg }),
+});
+
+const fullSlot = (program: ProgramDetail, maxes: ReadonlyMap<string, number>) => (slot: ProgramExerciseDetail) => {
+  const basis = {
+    trainingMaxKg: program.trainingMaxes.find((max) => max.exerciseId === slot.exerciseId)?.kg ?? null,
+    maxKg: maxes.get(slot.exerciseId) ?? null,
+    weightStepKg: slot.exercise.weightStepKg,
+  };
+  return {
+    programExerciseId: slot.id,
+    exercise: { id: slot.exercise.id, name: slot.exercise.name },
+    ...(slot.notes !== "" && { notes: slot.notes }),
+    prescriptions: slot.prescriptions.map((prescription) =>
+      fullPrescription(prescription, resolveLoad(prescription.load, prescription.reps, basis)),
+    ),
+  };
+};
+
+const fullDay = (program: ProgramDetail, maxes: ReadonlyMap<string, number>) => (day: ProgramDayDetail) => ({
+  dayId: day.id,
+  name: day.name,
+  exercises: day.exercises.map(fullSlot(program, maxes)),
+});
+
+export const fullProgram = (program: ProgramDetail, maxes: ReadonlyMap<string, number>) => {
+  const nameOf = new Map(
+    program.days.flatMap((day) => day.exercises.map((slot) => [slot.exerciseId, slot.exercise.name] as const)),
+  );
+  return {
+    id: program.id,
+    name: program.name,
+    notes: program.notes,
+    trainingMaxes: program.trainingMaxes.map((max) => ({
+      exerciseId: max.exerciseId,
+      ...(nameOf.has(max.exerciseId) && { name: nameOf.get(max.exerciseId) }),
+      kg: max.kg,
+    })),
+    weeks: [...weeksOf(program)].map(([week, days]) => ({ week, days: days.map(fullDay(program, maxes)) })),
+  };
 };

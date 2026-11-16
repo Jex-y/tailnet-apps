@@ -1,13 +1,34 @@
 import { asc, eq } from "drizzle-orm";
-import type { Entry, Exercise, LiftSet, Workout } from "../contract";
+import type {
+  Entry,
+  Exercise,
+  LiftSet,
+  Load,
+  Prescription,
+  Program,
+  ProgramDay,
+  ProgramExercise,
+  TrainingMax,
+  Workout,
+} from "../contract";
 import type { LiftsDb } from "./db";
-import { entries, exercises, sets, workouts } from "./schema";
+import {
+  entries,
+  exercises,
+  prescriptions,
+  programDays,
+  programExercises,
+  programs,
+  sets,
+  trainingMaxes,
+  workouts,
+} from "./schema";
 
 export type LiftsReader = Pick<LiftsDb, "select">;
 
 export const readExercises = (db: LiftsReader, owner: string): Promise<Exercise[]> =>
   db
-    .select({ id: exercises.id, name: exercises.name, lift: exercises.lift })
+    .select({ id: exercises.id, name: exercises.name, lift: exercises.lift, weightStepKg: exercises.weightStepKg })
     .from(exercises)
     .where(eq(exercises.owner, owner))
     .orderBy(asc(exercises.name), asc(exercises.id));
@@ -56,4 +77,98 @@ export const readSets = async (db: LiftsReader, owner: string): Promise<LiftSet[
     .where(eq(sets.owner, owner))
     .orderBy(asc(sets.entryId), asc(sets.position), asc(sets.id));
   return rows.map((row) => ({ ...row, loggedAt: row.loggedAt.toISOString() }));
+};
+
+export const readPrograms = (db: LiftsReader, owner: string): Promise<Program[]> =>
+  db
+    .select({ id: programs.id, name: programs.name, notes: programs.notes })
+    .from(programs)
+    .where(eq(programs.owner, owner))
+    .orderBy(asc(programs.createdAt), asc(programs.id));
+
+export const readTrainingMaxes = (db: LiftsReader, owner: string): Promise<TrainingMax[]> =>
+  db
+    .select({
+      id: trainingMaxes.id,
+      programId: trainingMaxes.programId,
+      exerciseId: trainingMaxes.exerciseId,
+      kg: trainingMaxes.kg,
+    })
+    .from(trainingMaxes)
+    .where(eq(trainingMaxes.owner, owner))
+    .orderBy(asc(trainingMaxes.programId), asc(trainingMaxes.id));
+
+export const readProgramDays = (db: LiftsReader, owner: string): Promise<ProgramDay[]> =>
+  db
+    .select({
+      id: programDays.id,
+      programId: programDays.programId,
+      week: programDays.week,
+      position: programDays.position,
+      name: programDays.name,
+    })
+    .from(programDays)
+    .where(eq(programDays.owner, owner))
+    .orderBy(asc(programDays.programId), asc(programDays.week), asc(programDays.position), asc(programDays.id));
+
+export const readProgramExercises = (db: LiftsReader, owner: string): Promise<ProgramExercise[]> =>
+  db
+    .select({
+      id: programExercises.id,
+      programDayId: programExercises.programDayId,
+      exerciseId: programExercises.exerciseId,
+      position: programExercises.position,
+      notes: programExercises.notes,
+    })
+    .from(programExercises)
+    .where(eq(programExercises.owner, owner))
+    .orderBy(asc(programExercises.programDayId), asc(programExercises.position), asc(programExercises.id));
+
+type LoadColumns = {
+  readonly loadKind: Load["kind"];
+  readonly loadKg: number | null;
+  readonly loadPercent: number | null;
+  readonly loadRpe: number | null;
+};
+
+/** The table's check constraint guarantees the column of the row's kind is set. */
+const loadOf = ({ loadKind, loadKg, loadPercent, loadRpe }: LoadColumns): Load => {
+  switch (loadKind) {
+    case "kg":
+      return { kind: "kg", kg: loadKg ?? 0 };
+    case "percent":
+      return { kind: "percent", percent: loadPercent ?? 0 };
+    case "rpe":
+      return { kind: "rpe", rpe: loadRpe ?? 0 };
+  }
+};
+
+export const loadColumns = (load: Load): LoadColumns => ({
+  loadKind: load.kind,
+  loadKg: load.kind === "kg" ? load.kg : null,
+  loadPercent: load.kind === "percent" ? load.percent : null,
+  loadRpe: load.kind === "rpe" ? load.rpe : null,
+});
+
+export const readPrescriptions = async (db: LiftsReader, owner: string): Promise<Prescription[]> => {
+  const rows = await db
+    .select({
+      id: prescriptions.id,
+      programExerciseId: prescriptions.programExerciseId,
+      position: prescriptions.position,
+      sets: prescriptions.sets,
+      reps: prescriptions.reps,
+      kind: prescriptions.kind,
+      loadKind: prescriptions.loadKind,
+      loadKg: prescriptions.loadKg,
+      loadPercent: prescriptions.loadPercent,
+      loadRpe: prescriptions.loadRpe,
+    })
+    .from(prescriptions)
+    .where(eq(prescriptions.owner, owner))
+    .orderBy(asc(prescriptions.programExerciseId), asc(prescriptions.position), asc(prescriptions.id));
+  return rows.map(({ loadKind, loadKg, loadPercent, loadRpe, ...row }) => ({
+    ...row,
+    load: loadOf({ loadKind, loadKg, loadPercent, loadRpe }),
+  }));
 };

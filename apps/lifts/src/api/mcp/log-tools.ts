@@ -1,6 +1,15 @@
 import { type McpServer, toolResult } from "@apps/core";
 import { z } from "zod";
-import { COMPETITION_LIFTS, Entry, Exercise, LiftSet, type Mutation, SET_KINDS, Workout } from "../../contract";
+import {
+  COMPETITION_LIFTS,
+  DEFAULT_WEIGHT_STEP_KG,
+  Entry,
+  Exercise,
+  LiftSet,
+  type Mutation,
+  SET_KINDS,
+  Workout,
+} from "../../contract";
 import { nextPosition, sessionsOf, workoutDetails } from "../../log";
 import { bestEstimate, repRecords } from "../../strength";
 import type { LiftsMcpDeps } from "./index";
@@ -54,6 +63,9 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
       inputSchema: {
         name: Exercise.shape.name,
         lift: Exercise.shape.lift.default(null).describe("The competition lift this exercise is, if it is one"),
+        weightStepKg: Exercise.shape.weightStepKg
+          .default(DEFAULT_WEIGHT_STEP_KG)
+          .describe("What prescribed weights round down to, such as 1 for an exercise loaded with microplates"),
       },
       annotations: change,
     },
@@ -66,22 +78,29 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
   server.registerTool(
     "update_exercise",
     {
-      description: "Renames an exercise or changes which competition lift it stands for. Only the fields given change.",
+      description:
+        "Renames an exercise, changes which competition lift it stands for or the step its prescribed weights round down to. Only the fields given change.",
       inputSchema: {
         exerciseId: ExerciseId,
         name: Exercise.shape.name.optional(),
         lift: z.enum(COMPETITION_LIFTS).nullable().optional().describe("null to stop it standing for a lift"),
+        weightStepKg: Exercise.shape.weightStepKg.optional(),
       },
       annotations: edit,
     },
-    ({ exerciseId, name, lift }) =>
+    ({ exerciseId, name, lift, weightStepKg }) =>
       toolResult(async () => {
         const { exercises } = await service.log(owner);
         const exercise = exercises.find((other) => other.id === exerciseId) ?? notFound();
         await service.apply(owner, [
           {
             type: "exercise.put",
-            row: { ...exercise, name: name ?? exercise.name, lift: lift === undefined ? exercise.lift : lift },
+            row: {
+              ...exercise,
+              name: name ?? exercise.name,
+              lift: lift === undefined ? exercise.lift : lift,
+              weightStepKg: weightStepKg ?? exercise.weightStepKg,
+            },
           },
         ]);
         return exerciseSummaries(await service.log(owner));
@@ -90,7 +109,7 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
   server.registerTool(
     "delete_exercise",
     {
-      description: "Deletes an exercise that has never been logged. Cannot be undone.",
+      description: "Deletes an exercise that has never been logged and is in no program. Cannot be undone.",
       inputSchema: { exerciseId: ExerciseId },
       annotations: destroy,
     },

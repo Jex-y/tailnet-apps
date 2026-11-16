@@ -8,7 +8,7 @@ export const NOW = new Date("2026-10-01T18:30:00Z");
 export const createLiftsTestContext = () => {
   const context = createTestContext();
   beforeEach(async () => {
-    await context.sql`truncate lifts.exercises, lifts.workouts, lifts.pushes cascade`;
+    await context.sql`truncate lifts.exercises, lifts.workouts, lifts.programs, lifts.pushes cascade`;
     await context.sql`delete from jobs.jobs where name like 'lifts.%'`;
   });
   return context;

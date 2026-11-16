@@ -46,6 +46,7 @@ const exercise = (fields: Partial<Exercise> = {}): Exercise => ({
   id: crypto.randomUUID(),
   name: "Squat",
   lift: null,
+  weightStepKg: 2.5,
   ...fields,
 });
 const workout = (fields: Partial<Workout> = {}): Workout => ({

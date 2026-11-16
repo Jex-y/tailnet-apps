@@ -19,16 +19,36 @@ import {
   type LiftSet,
   LiftSetList,
   Mutation,
+  type Prescription,
+  PrescriptionList,
+  type Program,
+  type ProgramDay,
+  ProgramDayList,
+  type ProgramExercise,
+  ProgramExerciseList,
+  ProgramList,
+  type TrainingMax,
+  TrainingMaxList,
   type Workout,
   WorkoutList,
 } from "../../contract";
 
-/** Each collection's name, which is also its path under the API, against the row its mutations are named for. */
-const ROWS = { exercises: "exercise", workouts: "workout", entries: "entry", sets: "set" } as const;
+/** Each collection's path under the API, and the row its mutations are named for. */
+const ROWS = {
+  exercises: { path: "exercises", row: "exercise" },
+  workouts: { path: "workouts", row: "workout" },
+  entries: { path: "entries", row: "entry" },
+  sets: { path: "sets", row: "set" },
+  programs: { path: "programs", row: "program" },
+  trainingMaxes: { path: "training-maxes", row: "trainingMax" },
+  programDays: { path: "program-days", row: "programDay" },
+  programExercises: { path: "program-exercises", row: "programExercise" },
+  prescriptions: { path: "prescriptions", row: "prescription" },
+} as const;
 type CollectionName = keyof typeof ROWS;
 
 /** Bumped whenever a row's shape changes, so a device drops the rows it kept and loads them again. */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /** The longest the first screen waits for rows it expects before showing whatever has arrived. */
 const RESTORE_WAIT_MS = 1500;
@@ -42,7 +62,7 @@ const isRefusal = (error: unknown): boolean =>
   error instanceof ApiError && error.status >= 400 && error.status < 500 && ![401, 408, 429].includes(error.status);
 
 const toMutation = (pending: PendingMutation): Mutation => {
-  const row = ROWS[pending.collection.id as CollectionName];
+  const { row } = ROWS[pending.collection.id as CollectionName];
   const mutation = Mutation.safeParse(
     pending.type === "delete"
       ? { type: `${row}.delete`, id: pending.key }
@@ -129,6 +149,11 @@ export type Store = {
   readonly workouts: Collection<Workout, string>;
   readonly entries: Collection<Entry, string>;
   readonly sets: Collection<LiftSet, string>;
+  readonly programs: Collection<Program, string>;
+  readonly trainingMaxes: Collection<TrainingMax, string>;
+  readonly programDays: Collection<ProgramDay, string>;
+  readonly programExercises: Collection<ProgramExercise, string>;
+  readonly prescriptions: Collection<Prescription, string>;
   /** Where a change made without a connection is kept until it can be sent. */
   readonly durability: () => Durability;
   /**
@@ -156,7 +181,7 @@ export const openStore = async (): Promise<Store> => {
       id: name,
       queryClient,
       queryKey,
-      queryFn: () => requestJson(`${LIFTS_API}/${name}`, list),
+      queryFn: () => requestJson(`${LIFTS_API}/${ROWS[name].path}`, list),
       getKey: (row) => row.id,
     });
     confirm.set(name, async (changes) => {
@@ -186,6 +211,11 @@ export const openStore = async (): Promise<Store> => {
     workouts: collection("workouts", WorkoutList),
     entries: collection("entries", EntryList),
     sets: collection("sets", LiftSetList),
+    programs: collection("programs", ProgramList),
+    trainingMaxes: collection("trainingMaxes", TrainingMaxList),
+    programDays: collection("programDays", ProgramDayList),
+    programExercises: collection("programExercises", ProgramExerciseList),
+    prescriptions: collection("prescriptions", PrescriptionList),
   };
 
   const executor = startOfflineExecutor({
