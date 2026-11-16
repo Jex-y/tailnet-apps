@@ -143,8 +143,8 @@ export const RepProfileCard = ({ profile }: { readonly profile: RepProfile<Logge
       </table>
       <p className="footnote muted">
         Each work set’s load is first carried to today’s level along the trend, then one max is fitted to them all by
-        least squares on load = max × the chart’s share for its reps and RPE. Ranges show their sets’ mean distance
-        from it, with a t interval.
+        least squares on load = max × the chart’s share for its reps and RPE. Ranges show their sets’ mean distance from
+        it, with a t interval.
       </p>
     </section>
   );
