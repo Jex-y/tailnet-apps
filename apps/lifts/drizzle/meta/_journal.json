@@ -29,6 +29,13 @@
       "when": 1794844940103,
       "tag": "0003_timed_and_bodyweight",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794904516123,
+      "tag": "0004_name_workouts",
+      "breakpoints": true
     }
   ]
 }

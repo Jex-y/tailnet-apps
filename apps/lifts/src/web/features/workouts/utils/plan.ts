@@ -148,6 +148,37 @@ export const withChange = (rows: readonly Row[], intent: Intent, index: number, 
   return { ...intent, changes };
 };
 
+/**
+ * The sets still to do from `index` on, logged at once with `values` for the first, as when catching up on an
+ * exercise after the fact. What was typed for the first carries down as {@link withChange} carries it, and its RPE
+ * goes to every work set.
+ */
+export const plannedFrom = (
+  rows: readonly Row[],
+  intent: Intent,
+  index: number,
+  values: SetValues,
+): { readonly values: SetValues; readonly position: number }[] => {
+  const { weightKg, reps, seconds } = values;
+  const { changes } = withChange(rows, intent, index, { weightKg, reps, seconds });
+  return rows.flatMap((row) =>
+    row.kind !== "planned" || row.index < index
+      ? []
+      : [
+          {
+            position: row.index,
+            values:
+              row.index === index
+                ? values
+                : {
+                    ...(changes.get(row.index) ?? row.values),
+                    rpe: row.values.kind === "work" && values.kind === "work" ? values.rpe : null,
+                  },
+          },
+        ],
+  );
+};
+
 /** Past workouts to start from: the latest of each distinct line-up of exercises, most recent first. */
 export const startingPoints = (workouts: readonly WorkoutDetail[], limit: number): WorkoutDetail[] => {
   const seen = new Set<string>();

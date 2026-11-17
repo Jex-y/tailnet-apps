@@ -53,10 +53,18 @@ export const Exercise = z.object({
 });
 export type Exercise = z.infer<typeof Exercise>;
 
+/** What a workout is called, as Claude names it once it is finished or as the lifter renames it. */
+export const WorkoutName = z.string().trim().min(1).max(80);
+
 export const Workout = z.object({
   id: Id,
   /** The training day, wherever in the world it was. */
   date: LocalDate,
+  /**
+   * `null` until named. A device's write never clears a name: a row it wrote before the name was given still
+   * lands without losing it. The default lets changes queued before names still land.
+   */
+  name: WorkoutName.nullable().default(null),
   /** `null` while the session is still being logged. */
   finishedAt: Instant.nullable(),
   notes: Notes,

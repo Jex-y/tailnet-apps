@@ -35,6 +35,7 @@ export const maxOf = (sets: readonly LoggedSet[]) => {
 export const briefWorkout = (workout: WorkoutDetail) => ({
   id: workout.id,
   date: workout.date,
+  ...(workout.name !== null && { name: workout.name }),
   finished: workout.finishedAt !== null,
   ...(workout.bodyweightKg !== null && { bodyweightKg: workout.bodyweightKg }),
   ...(workout.notes !== "" && { notes: workout.notes }),
@@ -65,6 +66,7 @@ export const fullEntry = (entry: EntryDetail) => ({
 export const fullWorkout = (workout: WorkoutDetail) => ({
   id: workout.id,
   date: workout.date,
+  name: workout.name,
   finishedAt: workout.finishedAt,
   bodyweightKg: workout.bodyweightKg,
   notes: workout.notes,

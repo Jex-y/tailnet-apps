@@ -6,6 +6,7 @@ import {
   lastSession,
   NO_INTENT,
   openRows,
+  plannedFrom,
   type Row,
   startingPoints,
   valuesOf,
@@ -40,6 +41,7 @@ const set = (weightKg: number, reps: number, fields: Partial<LoggedSet> = {}): L
 const workout = (id: string, date: string, trained: Record<string, LoggedSet[]>, finished = true): WorkoutDetail => ({
   id,
   date,
+  name: null,
   finishedAt: finished ? `${date}T19:00:00.000Z` : null,
   notes: "",
   bodyweightKg: null,
@@ -168,6 +170,35 @@ describe("withChange", () => {
     const longer = withChange(rows, NO_INTENT, 0, { seconds: 45 });
 
     expect(brief(openRows([], held, longer, FIRST))).toEqual(["20x45s", "20x45s", "20x20s"]);
+  });
+});
+
+describe("plannedFrom", () => {
+  test("logs the rest as planned, carrying what was typed for the first and its RPE to the work sets", () => {
+    const rows = openRows([], lastTime, NO_INTENT, FIRST);
+    const typed = { weightKg: 142.5, reps: 5, seconds: null, rpe: 8, kind: "work" as const };
+
+    const logged = plannedFrom(rows, NO_INTENT, 1, typed);
+
+    expect(
+      logged.map(({ position, values }) => `${position}: ${values.weightKg}x${values.reps} @${values.rpe}`),
+    ).toEqual(["1: 142.5x5 @8", "2: 142.5x5 @8", "3: 142.5x4 @8"]);
+  });
+
+  test("leaves warm-ups without an RPE and skips sets already done", () => {
+    const rows = openRows([set(60, 5, { kind: "warmup", position: 0 })], lastTime, NO_INTENT, FIRST);
+    const warm = plannedFrom(openRows([], lastTime, NO_INTENT, FIRST), NO_INTENT, 0, {
+      weightKg: 60,
+      reps: 5,
+      seconds: null,
+      rpe: null,
+      kind: "warmup",
+    });
+
+    expect(
+      plannedFrom(rows, NO_INTENT, 0, { weightKg: 140, reps: 5, seconds: null, rpe: 7, kind: "work" }),
+    ).toHaveLength(3);
+    expect(warm.map(({ values }) => values.rpe)).toEqual([null, null, null, null]);
   });
 });
 

@@ -25,6 +25,7 @@ const set = (weightKg: number, reps: number): LoggedSet => ({
 const workout = (date: string, trained: readonly (readonly [Exercise, LoggedSet[]])[]): WorkoutDetail => ({
   id: date,
   date,
+  name: null,
   finishedAt: null,
   notes: "",
   bodyweightKg: null,

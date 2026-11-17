@@ -37,6 +37,7 @@ x-app-secrets-env: &app-secrets-env
   STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET:-}
   MATHPIX_APP_ID: ${MATHPIX_APP_ID:-}
   MATHPIX_APP_KEY: ${MATHPIX_APP_KEY:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
 
 x-tailnet: &tailnet
   network_mode: service:tailscale

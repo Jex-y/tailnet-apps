@@ -22,16 +22,21 @@ import { RestBar } from "./RestTimer";
 export type Figures = Extract<Parsed, { ok: true }>["values"];
 
 /**
- * What the dock is for. `ready` takes the next set's figures and logs it; `rate` asks how hard the set just logged was
- * while the rest runs, and still logs the next one; `edit` corrects a set already logged; `idle` has nothing to log.
+ * What the dock is for. `ready` takes the next set's figures and logs it, or it and every set after it; `rate` asks how
+ * hard the set just logged was while the rest runs, and still logs the next one; `edit` corrects a set already logged;
+ * `idle` has nothing to log.
  */
 export type DockMode =
   | {
       readonly kind: "ready";
       readonly label: string;
       readonly values: SetValues;
+      /** How many sets the exercise has still to do, this one included. */
+      readonly remaining: number;
       readonly onKind: (kind: SetValues["kind"]) => void;
       readonly onLog: (figures: Figures) => void;
+      /** Logs this set as typed and the rest as planned, as when catching up on an exercise after the fact. */
+      readonly onLogAll: (figures: Figures) => void;
     }
   | {
       readonly kind: "rate";
@@ -107,17 +112,29 @@ const KindToggle = ({
   </button>
 );
 
+type Props = {
+  readonly mode: DockMode;
+  readonly exercise: Counting;
+  /** Folded down to its label and big button, out of the way of the page, while logging or rating a set. */
+  readonly stowed: boolean;
+  readonly onStow: (stowed: boolean) => void;
+};
+
 /**
  * The controls, docked above the tab bar where the thumb rests. Figures go in on the dock's own number pad, so the
- * system keyboard never covers the page: tap a field, type, done. Its height never changes and its big button never
- * moves, so a set can be logged by feel. It takes its mode afresh when given a new `key`.
+ * system keyboard never covers the page: tap a field, type, done. While it has figures to show its height never
+ * changes and its big button never moves, so a set can be logged by feel; with none, or stowed, it folds down to its
+ * label and big button, which stays where it was. It takes its mode afresh when given a new `key`.
  */
-export const Dock = ({ mode, exercise }: { readonly mode: DockMode; readonly exercise: Counting }) => {
+export const Dock = ({ mode, exercise, stowed, onStow }: Props) => {
   const [draft, setDraft] = useState(() => startingDraft(mode));
   const [active, setActive] = useState<Field>("weightKg");
   const [fresh, setFresh] = useState(true);
   const [invalid, setInvalid] = useState<readonly Field[]>([]);
-  const typing = mode.kind === "ready" || mode.kind === "edit";
+  // A set being corrected was tapped for, so it always shows its figures.
+  const stowable = mode.kind === "ready" || mode.kind === "rate";
+  const compact = mode.kind === "idle" || (stowable && stowed);
+  const typing = !compact && (mode.kind === "ready" || mode.kind === "edit");
 
   const choose = (field: Field) => {
     setActive(field);
@@ -200,10 +217,15 @@ export const Dock = ({ mode, exercise }: { readonly mode: DockMode; readonly exe
           }`;
 
   return (
-    <section className={`dock ${mode.kind}`} aria-label="Set controls">
+    <section className={`dock ${mode.kind}${compact ? " compact" : ""}`} aria-label="Set controls">
       <div className="dock-head">
         <p className="dock-label numeric">{mode.label}</p>
-        {mode.kind === "ready" && <KindToggle kind={mode.values.kind} onKind={mode.onKind} />}
+        {mode.kind === "ready" && !compact && mode.remaining > 1 && (
+          <button type="button" className="dock-chip" onClick={() => commit(mode.onLogAll)}>
+            Log all {mode.remaining}
+          </button>
+        )}
+        {mode.kind === "ready" && !compact && <KindToggle kind={mode.values.kind} onKind={mode.onKind} />}
         {mode.kind === "edit" && (
           <>
             <KindToggle kind={mode.set.kind} onKind={mode.onKind} />
@@ -212,14 +234,25 @@ export const Dock = ({ mode, exercise }: { readonly mode: DockMode; readonly exe
             </ConfirmButton>
           </>
         )}
-        {mode.kind === "rate" && (
+        {mode.kind === "rate" && !compact && (
           <button type="button" className="dock-chip" onClick={mode.onSkip}>
             Skip
           </button>
         )}
+        {stowable && (
+          <button
+            type="button"
+            className="dock-chip dock-stow"
+            aria-label={stowed ? "Show the set controls" : "Hide the set controls"}
+            aria-expanded={!stowed}
+            onClick={() => onStow(!stowed)}
+          >
+            <Icon name={stowed ? "up" : "down"} />
+          </button>
+        )}
       </div>
 
-      {draft !== null && (
+      {!compact && draft !== null && (
         <div className="dock-fields">
           {FIELDS.map((field) => (
             <button
@@ -257,7 +290,7 @@ export const Dock = ({ mode, exercise }: { readonly mode: DockMode; readonly exe
         </div>
       )}
 
-      {mode.kind === "rate" && (
+      {mode.kind === "rate" && !compact && (
         <div className="dock-rate">
           <RestBar since={mode.since} />
           <fieldset className="dock-rpe">

@@ -1,0 +1,1 @@
+ALTER TABLE "lifts"."workouts" ADD COLUMN "name" text;

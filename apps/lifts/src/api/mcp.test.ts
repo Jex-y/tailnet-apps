@@ -5,7 +5,7 @@ import { createLiftsTestContext, NOW } from "../../test/support";
 import { createLiftsApp } from "../module";
 
 const context = createLiftsTestContext();
-const request = startTestServer((ctx) => [createLiftsApp(ctx, { now: () => NOW })], context);
+const request = startTestServer((ctx) => [createLiftsApp(ctx, { now: () => NOW, namer: null })], context);
 const me = uniqueLogin();
 
 const connect = (as = me) => connectMcp(request, "/lifts/mcp", as);

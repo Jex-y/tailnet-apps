@@ -6,14 +6,33 @@ import type { Store } from "../../../lib/store";
 import { localToday } from "../../../utils/format";
 import type { SetValues } from "../utils/plan";
 
-type WorkoutFields = Partial<Pick<Workout, "date" | "notes" | "bodyweightKg" | "finishedAt">>;
+type WorkoutFields = Partial<Pick<Workout, "date" | "name" | "notes" | "bodyweightKg" | "finishedAt">>;
+
+type Placed = { readonly values: SetValues; readonly position: number };
+
+const addSets = (store: Store, entry: EntryDetail, placed: readonly Placed[]): string[] => {
+  const loggedAt = new Date().toISOString();
+  const rows = placed.map(({ values, position }) => ({
+    id: crypto.randomUUID(),
+    entryId: entry.id,
+    position,
+    loggedAt,
+    ...values,
+  }));
+  store.write(() => {
+    for (const row of rows) {
+      store.sets.insert(row);
+    }
+  });
+  return rows.map((row) => row.id);
+};
 
 const actions = (store: Store) => ({
   /** Opens a session for today, answering its id. */
   start: (): string => {
     const id = crypto.randomUUID();
     store.write(() => {
-      store.workouts.insert({ id, date: localToday(), finishedAt: null, notes: "", bodyweightKg: null });
+      store.workouts.insert({ id, date: localToday(), name: null, finishedAt: null, notes: "", bodyweightKg: null });
     });
     return id;
   },
@@ -22,7 +41,7 @@ const actions = (store: Store) => ({
   startFrom: (past: WorkoutDetail): string => {
     const id = crypto.randomUUID();
     store.write(() => {
-      store.workouts.insert({ id, date: localToday(), finishedAt: null, notes: "", bodyweightKg: null });
+      store.workouts.insert({ id, date: localToday(), name: null, finishedAt: null, notes: "", bodyweightKg: null });
       past.entries.forEach((entry, position) => {
         store.entries.insert({
           id: crypto.randomUUID(),
@@ -104,18 +123,12 @@ const actions = (store: Store) => ({
 
   /** Logs a set at a place among the exercise's sets, answering its id. */
   addSet: (entry: EntryDetail, values: SetValues, position = nextPosition(entry.sets)): string => {
-    const id = crypto.randomUUID();
-    store.write(() => {
-      store.sets.insert({
-        id,
-        entryId: entry.id,
-        position,
-        loggedAt: new Date().toISOString(),
-        ...values,
-      });
-    });
+    const [id = ""] = addSets(store, entry, [{ values, position }]);
     return id;
   },
+
+  /** Logs sets at their places among the exercise's sets in one change, answering their ids. */
+  addSets: (entry: EntryDetail, placed: readonly Placed[]): string[] => addSets(store, entry, placed),
 
   updateSet: (set: LiftSet, values: Partial<SetValues>) => {
     store.write(() => {

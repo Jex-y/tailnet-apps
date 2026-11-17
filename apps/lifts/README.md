@@ -18,8 +18,18 @@ instead.
   button, always in the same place, logs the set, so a set can be logged without looking. While resting, the dock shows
   the rest against a three-minute target and asks the last set's RPE in one tap; logging the next set skips the
   question, and an RPE typed in with a set is never asked again. Tapping any row hands it to the dock to correct or
-  delete. A set that beats the best estimated max is marked as a record.
-- **History**: every workout, newest first, each open to correction in the same table and dock.
+  delete. A set that beats the best estimated max is marked as a record. The dock folds down to its big button when
+  there is nothing to type, or when stowed with its arrow, so the page can be read; tapping a row unfolds it. "Log all"
+  logs the set as typed and every set after it as planned, its weight carrying down and its RPE going to each work set,
+  for an exercise logged after the fact.
+- **History**: every workout, newest first, each open to correction in the same table and dock. An exercise added to a
+  finished workout, or given another set, is laid out from last session as it would be under way, to log in a tap or
+  two.
+
+A finished workout is named by Claude Haiku from what was lifted in it, a couple of minutes after it is finished, so
+sets sent just after the finish are counted; a daily sweep names any left unnamed. It needs `ANTHROPIC_API_KEY` set,
+and without it workouts simply go unnamed. A name can be changed in the workout, or over MCP, but not cleared, and a
+device that had not yet seen it never overwrites it.
 - **Exercises**: each competition lift's max as its trend puts it today, with the total, then each exercise. An
   exercise's page fits its trend and reads its rep–strength profile (below), then lists the heaviest set at each rep
   count and every session.

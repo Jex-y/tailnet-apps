@@ -12,6 +12,7 @@ import {
   SET_KINDS,
   Seconds,
   Workout,
+  WorkoutName,
 } from "../../contract";
 import { nextPosition, sessionsOf, workoutDetails } from "../../log";
 import { bestEstimate, repRecords } from "../../strength";
@@ -223,6 +224,9 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
       inputSchema: {
         sessionId: SessionId.optional(),
         date: Workout.shape.date.describe("The training day, YYYY-MM-DD"),
+        name: WorkoutName.nullable()
+          .default(null)
+          .describe("What to call it; left out, a finished workout is named from what was lifted"),
         notes: Workout.shape.notes.default(""),
         bodyweightKg: Workout.shape.bodyweightKg.default(null),
         finished: z.boolean().default(true).describe("false to leave the session open for more sets"),
@@ -265,17 +269,18 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
     "update_workout",
     {
       description:
-        "Changes a workout's day, notes or bodyweight, or finishes or reopens it. Only the fields given change.",
+        "Changes a workout's day, name, notes or bodyweight, or finishes or reopens it. Only the fields given change.",
       inputSchema: {
         workoutId: WorkoutId,
         date: Workout.shape.date.optional(),
+        name: WorkoutName.optional(),
         notes: Workout.shape.notes.optional(),
         bodyweightKg: Workout.shape.bodyweightKg.optional().describe("null to clear it"),
         finished: z.boolean().optional(),
       },
       annotations: edit,
     },
-    ({ workoutId, date, notes, bodyweightKg, finished }) =>
+    ({ workoutId, date, name, notes, bodyweightKg, finished }) =>
       toolResult(async () => {
         const { workouts } = await service.log(owner);
         const workout = workouts.find((other) => other.id === workoutId) ?? notFound();
@@ -287,6 +292,7 @@ export const registerLogTools = ({ service, now }: LiftsMcpDeps, server: McpServ
             row: {
               id: workout.id,
               date: date ?? workout.date,
+              name: name ?? workout.name,
               notes: notes ?? workout.notes,
               bodyweightKg: bodyweightKg === undefined ? workout.bodyweightKg : bodyweightKg,
               finishedAt,
