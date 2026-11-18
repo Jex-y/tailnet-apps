@@ -562,12 +562,12 @@ button.entry-next {
 }
 
 /*
- * The dock: the controls, where the thumb rests, just above the tab bar on a phone. Its height is fixed and its big
- * button is always at the bottom, whatever it is doing, so a set is logged by feel. Figures go in on its own pad, so
- * the system keyboard never covers the page.
+ * The dock: the controls, where the thumb rests, at the foot of the screen as the system keyboard would be. Its height
+ * is fixed and its big button is always at the bottom, whatever it is doing, so a set is logged by feel. Figures go in
+ * on its own pad, so the system keyboard never covers the page.
  */
 :root {
-  --dock-height: 18.5rem;
+  --dock-height: 15.8rem;
   --tab-bar-height: 3.75rem;
 }
 
@@ -577,11 +577,11 @@ button.entry-next {
   z-index: 3;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
   max-width: 34rem;
   height: calc(var(--dock-height) + env(safe-area-inset-bottom));
   margin: 0 auto;
-  padding: 0.6rem 0.75rem calc(0.7rem + env(safe-area-inset-bottom));
+  padding: 0.45rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom));
   background: var(--surface-raised);
   border: 1px solid var(--edge);
   border-bottom: none;
@@ -591,7 +591,7 @@ button.entry-next {
 
 /* With nothing to type, or stowed, the dock folds to its label and big button and the page takes back the room. */
 body:has(.dock.compact) {
-  --dock-height: 7.2rem;
+  --dock-height: 6.1rem;
 }
 
 .dock button {
@@ -608,8 +608,9 @@ body:has(.dock.compact) {
 .dock-head {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  min-height: 2.25rem;
+  gap: 0.35rem;
+  min-height: 2rem;
+  padding-left: 0.25rem;
 }
 
 .dock-label {
@@ -623,9 +624,9 @@ body:has(.dock.compact) {
 }
 
 .dock button.dock-chip {
-  min-height: 2.25rem;
-  padding-inline: 0.8rem;
-  font-size: 0.8125rem;
+  min-height: 2rem;
+  padding-inline: 0.7rem;
+  font-size: 0.78rem;
 }
 
 .dock button.dock-stow {
@@ -637,26 +638,26 @@ body:has(.dock.compact) {
   height: 1.25rem;
 }
 
-/* Keys and ratings the size of the system keyboard's, so the pad takes no more of the screen than it would. */
-.dock-pad button,
-.dock-rpe button {
-  min-height: 2.35rem;
-  font-size: 1.15rem;
+/* Keys and ratings no bigger than the system keyboard's, so the pad takes no more of the screen than it would. */
+.dock .dock-pad button,
+.dock .dock-rpe button {
+  min-height: 2.05rem;
+  font-size: 1.1rem;
 }
 
 /* Weight, reps and RPE; the one being typed into is outlined, and greyed until a key replaces it. */
 .dock-fields {
   display: grid;
   grid-template-columns: 1.4fr 1fr 1fr;
-  gap: 0.4rem;
+  gap: 0.25rem;
 }
 
 .dock button.dock-field {
   justify-content: center;
   align-items: baseline;
   gap: 0.3rem;
-  min-height: 2.75rem;
-  padding-top: 0.15rem;
+  min-height: 2.4rem;
+  padding-top: 0.1rem;
   background: var(--surface-2);
   border: 2px solid transparent;
 }
@@ -672,7 +673,7 @@ body:has(.dock.compact) {
 }
 
 .dock-value {
-  font-size: 1.55rem;
+  font-size: 1.35rem;
   font-weight: 800;
   letter-spacing: -0.03em;
 }
@@ -690,12 +691,12 @@ body:has(.dock.compact) {
 .dock-pad {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.3rem;
+  gap: 0.25rem;
 }
 
 .dock-pad .icon {
-  width: 1.3rem;
-  height: 1.3rem;
+  width: 1.2rem;
+  height: 1.2rem;
 }
 
 /* While the last set is rated, the fields hold the next one: dimmed until tapped. */
@@ -705,13 +706,13 @@ body:has(.dock.compact) {
 
 .dock-rate {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .dock-rpe {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.35rem;
+  gap: 0.25rem;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -726,19 +727,19 @@ body:has(.dock.compact) {
 
 .dock button.dock-log {
   gap: 0.5rem;
-  min-height: 3.1rem;
+  min-height: 2.75rem;
   margin-top: auto;
   background: var(--accent);
   border-color: var(--accent);
   border-radius: var(--radius);
   color: var(--on-accent);
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   font-weight: 800;
 }
 
 .dock-log .icon {
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.3rem;
+  height: 1.3rem;
   stroke-width: 2.6;
 }
 
@@ -750,7 +751,7 @@ body:has(.dock.compact) {
 
 .rest-clock {
   min-width: 3.6ch;
-  font-size: 1.4rem;
+  font-size: 1.25rem;
   font-weight: 800;
 }
 
@@ -1570,23 +1571,26 @@ a.lift-card {
     font-weight: 600;
   }
 
-  /* Above the tab bar, which stays: the dock never takes the way to the other sections. */
-  .dock {
+  /*
+   * Open, the dock covers the tab bar as the system keyboard would, so the pad takes the least of the screen. Folded,
+   * it sits above the tab bar, so stowing it gives back the way to the other sections.
+   */
+  .dock.compact {
     bottom: calc(var(--tab-bar-height) + env(safe-area-inset-bottom));
     height: var(--dock-height);
-    padding-bottom: 0.7rem;
+    padding-bottom: 0.5rem;
   }
 
-  main:has(.dock) {
+  main:has(.dock.compact) {
     padding-bottom: calc(var(--dock-height) + var(--tab-bar-height) + 1.5rem + env(safe-area-inset-bottom));
   }
 
-  /* Opaque under the dock, so the page does not show through between the two. */
-  body:has(.dock) .tab-bar {
+  /* Opaque under the folded dock, so the page does not show through between the two. */
+  body:has(.dock.compact) .tab-bar {
     background: var(--surface-raised);
   }
 
-  body:has(.dock) .notices {
+  body:has(.dock.compact) .notices {
     bottom: calc(var(--dock-height) + var(--tab-bar-height) + 1rem + env(safe-area-inset-bottom));
   }
 }

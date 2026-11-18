@@ -13,13 +13,13 @@ instead.
 
 - **Log**: the session under way. A new one starts from a past session's exercises or empty. Exercises done fold to a
   line; the one being lifted is a dense table of its sets, each beside what was lifted in its place last time, with the
-  max it implies and how that compares with last session; the rest wait below. A dock above the tab bar logs each set:
+  max it implies and how that compares with last session; the rest wait below. A dock at the foot of the screen, where the system keyboard would be, logs each set:
   the weight, reps and RPE are typed on its own number pad, the first key replacing what a field held, and one big
   button, always in the same place, logs the set, so a set can be logged without looking. While resting, the dock shows
   the rest against a three-minute target and asks the last set's RPE in one tap; logging the next set skips the
   question, and an RPE typed in with a set is never asked again. Tapping any row hands it to the dock to correct or
   delete. A set that beats the best estimated max is marked as a record. The dock folds down to its big button when
-  there is nothing to type, or when stowed with its arrow, so the page can be read; tapping a row unfolds it. "Log all"
+  there is nothing to type, or when stowed with its arrow, and sits above the tab bar again; tapping a row unfolds it. "Log all"
   logs the set as typed and every set after it as planned, its weight carrying down and its RPE going to each work set,
   for an exercise logged after the fact.
 - **History**: every workout, newest first, each open to correction in the same table and dock. An exercise added to a
