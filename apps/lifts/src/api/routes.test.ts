@@ -16,7 +16,7 @@ import {
 import { createLiftsApp } from "../module";
 
 const context = createLiftsTestContext();
-const request = startTestServer((ctx) => [createLiftsApp(ctx, { now: () => NOW })], context);
+const request = startTestServer((ctx) => [createLiftsApp(ctx, { now: () => NOW, namer: null })], context);
 const me = uniqueLogin();
 
 const push = (mutations: readonly unknown[], { as = me, key = crypto.randomUUID() as string | null } = {}) =>
@@ -54,6 +54,7 @@ const exercise = (fields: Partial<Exercise> = {}): Exercise => ({
 const workout = (fields: Partial<Workout> = {}): Workout => ({
   id: crypto.randomUUID(),
   date: "2026-10-01",
+  name: null,
   finishedAt: null,
   notes: "",
   bodyweightKg: null,

@@ -1,5 +1,5 @@
 import { HttpError } from "@apps/core";
-import { and, count, eq, isNull, ne, or, type SQL } from "drizzle-orm";
+import { and, count, eq, isNull, ne, or, type SQL, sql } from "drizzle-orm";
 import type {
   Entry,
   Exercise,
@@ -43,8 +43,11 @@ import {
   readTrainingMaxes,
   readWorkouts,
 } from "./views";
+import type { LiftsWork } from "./work";
 
-export type LiftsServiceDeps = { readonly db: LiftsDb };
+type Work = Pick<LiftsWork, "scheduleNaming">;
+
+export type LiftsServiceDeps = { readonly db: LiftsDb; readonly work: Work };
 
 type Tx = Parameters<Parameters<LiftsDb["transaction"]>[0]>[0];
 
@@ -186,15 +189,23 @@ const ownExercise = async (tx: Tx, owner: string, id: string): Promise<Measured>
   return exercise;
 };
 
-const putWorkout = async (tx: Tx, owner: string, { id, finishedAt, ...fields }: Workout) => {
+/** A finished workout without a name is given one once it settles. */
+const putWorkout = async (tx: Tx, work: Work, owner: string, { id, finishedAt, ...fields }: Workout) => {
   const values = { ...fields, finishedAt: finishedAt === null ? null : new Date(finishedAt) };
-  requireWritten(
-    await tx
-      .insert(workouts)
-      .values({ id, owner, ...values })
-      .onConflictDoUpdate({ target: workouts.id, set: values, setWhere: eq(workouts.owner, owner) })
-      .returning({ id: workouts.id }),
-  );
+  const written = await tx
+    .insert(workouts)
+    .values({ id, owner, ...values })
+    .onConflictDoUpdate({
+      target: workouts.id,
+      // A device that has not yet seen the name writes the row without it; that never clears it.
+      set: { ...values, name: sql`coalesce(excluded.name, ${workouts.name})` },
+      setWhere: eq(workouts.owner, owner),
+    })
+    .returning({ name: workouts.name });
+  requireWritten(written);
+  if (finishedAt !== null && written[0]?.name === null) {
+    await work.scheduleNaming(tx, owner, id);
+  }
 };
 
 const putEntry = async (tx: Tx, owner: string, { id, ...fields }: Entry) => {
@@ -376,14 +387,14 @@ const deleteWorkout = async (tx: Tx, owner: string, id: string) => {
   await tx.delete(workouts).where(and(eq(workouts.id, id), eq(workouts.owner, owner)));
 };
 
-const applyOne = async (tx: Tx, owner: string, mutation: Mutation): Promise<void> => {
+const applyOne = async (tx: Tx, work: Work, owner: string, mutation: Mutation): Promise<void> => {
   switch (mutation.type) {
     case "exercise.put":
       return putExercise(tx, owner, mutation.row);
     case "exercise.delete":
       return deleteExercise(tx, owner, mutation.id);
     case "workout.put":
-      return putWorkout(tx, owner, mutation.row);
+      return putWorkout(tx, work, owner, mutation.row);
     case "workout.delete":
       return deleteWorkout(tx, owner, mutation.id);
     case "entry.put":
@@ -433,9 +444,9 @@ const applyOne = async (tx: Tx, owner: string, mutation: Mutation): Promise<void
   }
 };
 
-const applyAll = async (tx: Tx, owner: string, mutations: readonly Mutation[]) => {
+const applyAll = async (tx: Tx, work: Work, owner: string, mutations: readonly Mutation[]) => {
   for (const mutation of mutations) {
-    await applyOne(tx, owner, mutation);
+    await applyOne(tx, work, owner, mutation);
   }
 };
 
@@ -443,7 +454,7 @@ const applyAll = async (tx: Tx, owner: string, mutations: readonly Mutation[]) =
  * Everything someone can do with their training log, shared by the HTTP API and the MCP server. Refusals are
  * {@link HttpError}s saying why. Nobody can see or touch another's log.
  */
-export const createLiftsService = ({ db }: LiftsServiceDeps) => ({
+export const createLiftsService = ({ db, work }: LiftsServiceDeps) => ({
   exercises: (owner: string) => readExercises(db, owner),
   workouts: (owner: string) => readWorkouts(db, owner),
   entries: (owner: string) => readEntries(db, owner),
@@ -473,7 +484,7 @@ export const createLiftsService = ({ db }: LiftsServiceDeps) => ({
 
   /** Applies the changes in order, all or nothing. */
   apply: (owner: string, mutations: readonly Mutation[]): Promise<void> =>
-    db.transaction((tx) => applyAll(tx, owner, mutations)),
+    db.transaction((tx) => applyAll(tx, work, owner, mutations)),
 
   /** {@link apply}, at most once per key: a push that was refused may be sent again, one that landed is ignored. */
   push: (owner: string, key: string, mutations: readonly Mutation[]): Promise<void> =>
@@ -484,7 +495,7 @@ export const createLiftsService = ({ db }: LiftsServiceDeps) => ({
         .onConflictDoNothing()
         .returning({ key: pushes.key });
       if (claimed.length > 0) {
-        await applyAll(tx, owner, mutations);
+        await applyAll(tx, work, owner, mutations);
       }
     }),
 });

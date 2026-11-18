@@ -1,19 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import type { Exercise } from "../../../../contract";
 import type { LoggedSet } from "../../../../log";
 import { ConfirmButton } from "../../../components/ConfirmButton";
 import { Icon } from "../../../components/Icon";
-import {
-  DECIMAL,
-  type Draft,
-  draftOf,
-  FIELDS,
-  type Field,
-  type Key,
-  type Parsed,
-  parseDraft,
-  press,
-} from "../utils/keypad";
+import { useDockPlacement } from "../hooks/useDockPlacement";
+import { DECIMAL, type Draft, draftOf, FIELDS, type Field, type Parsed, parseDraft } from "../utils/draft";
 import type { SetValues } from "../utils/plan";
 import { RPES } from "../utils/session";
 import { RestBar } from "./RestTimer";
@@ -22,16 +13,21 @@ import { RestBar } from "./RestTimer";
 export type Figures = Extract<Parsed, { ok: true }>["values"];
 
 /**
- * What the dock is for. `ready` takes the next set's figures and logs it; `rate` asks how hard the set just logged was
- * while the rest runs, and still logs the next one; `edit` corrects a set already logged; `idle` has nothing to log.
+ * What the dock is for. `ready` takes the next set's figures and logs it, or it and every set after it; `rate` asks how
+ * hard the set just logged was while the rest runs, and still logs the next one; `edit` corrects a set already logged;
+ * `idle` has nothing to log.
  */
 export type DockMode =
   | {
       readonly kind: "ready";
       readonly label: string;
       readonly values: SetValues;
+      /** How many sets the exercise has still to do, this one included. */
+      readonly remaining: number;
       readonly onKind: (kind: SetValues["kind"]) => void;
       readonly onLog: (figures: Figures) => void;
+      /** Logs this set as typed and the rest as planned, as when catching up on an exercise after the fact. */
+      readonly onLogAll: (figures: Figures) => void;
     }
   | {
       readonly kind: "rate";
@@ -70,12 +66,6 @@ const namesOf = ({ measure, bodyweight }: Counting): Record<Field, string> => ({
   rpe: "RPE",
 });
 
-/** The pad, laid out as a calculator's: three rows of digits, with delete, the point and zero down the right. */
-const PAD: readonly Key[] = ["7", "8", "9", "back", "4", "5", "6", ".", "1", "2", "3", "0"];
-const KEY_NAMES: Partial<Record<Key, string>> = { ".": "Decimal point", back: "Delete" };
-
-const isKey = (key: string): key is Key => (PAD as readonly string[]).includes(key);
-
 /** The figures the dock opens with: the set being corrected, else the one about to be lifted. */
 const startingDraft = (mode: DockMode): Draft | null => {
   switch (mode.kind) {
@@ -107,33 +97,30 @@ const KindToggle = ({
   </button>
 );
 
-/**
- * The controls, docked above the tab bar where the thumb rests. Figures go in on the dock's own number pad, so the
- * system keyboard never covers the page: tap a field, type, done. Its height never changes and its big button never
- * moves, so a set can be logged by feel. It takes its mode afresh when given a new `key`.
- */
-export const Dock = ({ mode, exercise }: { readonly mode: DockMode; readonly exercise: Counting }) => {
-  const [draft, setDraft] = useState(() => startingDraft(mode));
-  const [active, setActive] = useState<Field>("weightKg");
-  const [fresh, setFresh] = useState(true);
-  const [invalid, setInvalid] = useState<readonly Field[]>([]);
-  const typing = mode.kind === "ready" || mode.kind === "edit";
+type Props = {
+  readonly mode: DockMode;
+  readonly exercise: Counting;
+  /** Folded down to its label and big button, out of the way of the page, while logging or rating a set. */
+  readonly stowed: boolean;
+  readonly onStow: (stowed: boolean) => void;
+};
 
-  const choose = (field: Field) => {
-    setActive(field);
-    setFresh(true);
-    if (mode.kind === "rate") {
-      mode.onSkip();
-    }
-  };
-  const type = (key: Key) => {
-    if (draft === null) {
-      return;
-    }
-    setDraft({ ...draft, [active]: press(draft[active], key, { fresh, decimal: DECIMAL[active] }) });
-    setFresh(false);
-    setInvalid(invalid.filter((field) => field !== active));
-  };
+/**
+ * The controls, docked above the tab bar where the thumb rests, and above the system keyboard while it is up. Figures
+ * go in on the system keyboard: tap a field, type over what it held, and the big button or Enter logs the set. Stowed,
+ * or with nothing to type, it folds down to its label and big button, which stays where it was. It takes its mode
+ * afresh when given a new `key`.
+ */
+export const Dock = ({ mode, exercise, stowed, onStow }: Props) => {
+  const [draft, setDraft] = useState(() => startingDraft(mode));
+  const [invalid, setInvalid] = useState<readonly Field[]>([]);
+  const dock = useRef<HTMLFormElement>(null);
+  const inputs = useRef<Partial<Record<Field, HTMLInputElement | null>>>({});
+  useDockPlacement(dock);
+  // A set being corrected was tapped for, so it always shows its figures.
+  const stowable = mode.kind === "ready" || mode.kind === "rate";
+  const compact = mode.kind === "idle" || (stowable && stowed);
+
   const commit = (use: (figures: Figures) => void) => {
     if (draft === null) {
       return;
@@ -144,10 +131,13 @@ export const Dock = ({ mode, exercise }: { readonly mode: DockMode; readonly exe
       return;
     }
     setInvalid(parsed.invalid);
-    setActive(parsed.invalid[0] ?? active);
-    setFresh(true);
+    const [first] = parsed.invalid;
+    if (first !== undefined) {
+      inputs.current[first]?.focus();
+    }
   };
-  const done = () => {
+  const done = (event: FormEvent) => {
+    event.preventDefault();
     switch (mode.kind) {
       case "ready":
         return commit(mode.onLog);
@@ -160,36 +150,9 @@ export const Dock = ({ mode, exercise }: { readonly mode: DockMode; readonly exe
     }
   };
 
-  // A keyboard, where there is one, types into the pad too: Enter is the big button and Tab the next field.
-  const latest = useRef({ type, done, choose, typing, active });
-  latest.current = { type, done, choose, typing, active };
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target instanceof HTMLElement ? event.target : null;
-      if (target?.closest("input, textarea, select, dialog, a") || event.metaKey || event.ctrlKey || event.altKey) {
-        return;
-      }
-      const now = latest.current;
-      const key = event.key === "Backspace" ? "back" : event.key;
-      if (now.typing && isKey(key)) {
-        now.type(key);
-      } else if (event.key === "Enter" && target?.tagName !== "BUTTON") {
-        now.done();
-      } else if (event.key === "Tab" && now.typing && !event.shiftKey) {
-        now.choose(FIELDS[(FIELDS.indexOf(now.active) + 1) % FIELDS.length] ?? "weightKg");
-      } else {
-        return;
-      }
-      event.preventDefault();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  const shown = (field: Field) => draft?.[field] ?? "";
   const [units, names] = [unitsOf(exercise), namesOf(exercise)];
-  const weight = shown("weightKg") || "–";
-  const count = shown("count") || "–";
+  const weight = draft?.weightKg.trim() || "–";
+  const count = draft?.count.trim() || "–";
   const logLabel =
     mode.kind === "edit"
       ? "Save"
@@ -200,10 +163,21 @@ export const Dock = ({ mode, exercise }: { readonly mode: DockMode; readonly exe
           }`;
 
   return (
-    <section className={`dock ${mode.kind}`} aria-label="Set controls">
+    <form
+      ref={dock}
+      className={`dock ${mode.kind}${compact ? " compact" : ""}`}
+      aria-label="Set controls"
+      noValidate
+      onSubmit={done}
+    >
       <div className="dock-head">
         <p className="dock-label numeric">{mode.label}</p>
-        {mode.kind === "ready" && <KindToggle kind={mode.values.kind} onKind={mode.onKind} />}
+        {mode.kind === "ready" && !compact && mode.remaining > 1 && (
+          <button type="button" className="dock-chip" onClick={() => commit(mode.onLogAll)}>
+            Log all {mode.remaining}
+          </button>
+        )}
+        {mode.kind === "ready" && !compact && <KindToggle kind={mode.values.kind} onKind={mode.onKind} />}
         {mode.kind === "edit" && (
           <>
             <KindToggle kind={mode.set.kind} onKind={mode.onKind} />
@@ -212,52 +186,56 @@ export const Dock = ({ mode, exercise }: { readonly mode: DockMode; readonly exe
             </ConfirmButton>
           </>
         )}
-        {mode.kind === "rate" && (
+        {mode.kind === "rate" && !compact && (
           <button type="button" className="dock-chip" onClick={mode.onSkip}>
             Skip
           </button>
         )}
+        {stowable && (
+          <button
+            type="button"
+            className="dock-chip dock-stow"
+            aria-label={stowed ? "Show the set controls" : "Hide the set controls"}
+            aria-expanded={!stowed}
+            onClick={() => onStow(!stowed)}
+          >
+            <Icon name={stowed ? "up" : "down"} />
+          </button>
+        )}
       </div>
 
-      {draft !== null && (
+      {/* While the last set is rated the next one's figures wait, so the rest and the ratings have the room. */}
+      {!compact && draft !== null && mode.kind !== "rate" && (
         <div className="dock-fields">
           {FIELDS.map((field) => (
-            <button
-              key={field}
-              type="button"
-              className="dock-field numeric"
-              aria-pressed={typing && field === active}
-              aria-invalid={invalid.includes(field)}
-              aria-label={`${names[field]}${mode.kind === "rate" ? " of the next set" : ""}: ${shown(field) || "none"}`}
-              onClick={() => choose(field)}
-            >
-              <span className={typing && field === active && fresh ? "dock-value fresh" : "dock-value"}>
-                {shown(field) || "–"}
-              </span>
+            <label key={field} className="dock-field numeric">
+              <input
+                ref={(input) => {
+                  inputs.current[field] = input;
+                }}
+                className="dock-value"
+                inputMode={DECIMAL[field] ? "decimal" : "numeric"}
+                enterKeyHint="done"
+                autoComplete="off"
+                maxLength={7}
+                value={draft[field]}
+                placeholder="–"
+                aria-label={names[field]}
+                aria-invalid={invalid.includes(field)}
+                // Typing replaces what the field held, so a new weight never needs clearing first.
+                onFocus={(event) => event.currentTarget.select()}
+                onChange={(event) => {
+                  setDraft({ ...draft, [field]: event.target.value });
+                  setInvalid(invalid.filter((other) => other !== field));
+                }}
+              />
               <span className="dock-unit">{units[field]}</span>
-            </button>
+            </label>
           ))}
         </div>
       )}
 
-      {typing && (
-        <div className="dock-pad">
-          {PAD.map((key) => (
-            <button
-              key={key}
-              type="button"
-              className="numeric"
-              aria-label={KEY_NAMES[key]}
-              disabled={key === "." && !DECIMAL[active]}
-              onClick={() => type(key)}
-            >
-              {key === "back" ? <Icon name="delete" /> : key}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {mode.kind === "rate" && (
+      {mode.kind === "rate" && !compact && (
         <div className="dock-rate">
           <RestBar since={mode.since} />
           <fieldset className="dock-rpe">
@@ -278,10 +256,10 @@ export const Dock = ({ mode, exercise }: { readonly mode: DockMode; readonly exe
         </div>
       )}
 
-      <button type="button" className="dock-log" onClick={done}>
+      <button type="submit" className="dock-log">
         <Icon name="check" />
         {logLabel}
       </button>
-    </section>
+    </form>
   );
 };

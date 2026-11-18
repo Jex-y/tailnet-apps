@@ -16,6 +16,7 @@ export const WorkoutList = ({ workouts }: { readonly workouts: readonly WorkoutD
               <strong className="numeric">{day}</strong>
             </time>
             <span className="workout-lines">
+              {workout.name !== null && <strong className="workout-name">{workout.name}</strong>}
               {workout.entries.length === 0 && <span className="muted">Nothing logged</span>}
               {workout.entries.map((entry) => {
                 const top = bestEstimate(entry.sets)?.set ?? entry.sets.at(-1);

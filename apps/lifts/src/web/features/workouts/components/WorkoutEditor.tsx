@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { type Exercise, type LiftSet, Workout } from "../../../../contract";
 import { sessionsOf, type WorkoutDetail } from "../../../../log";
@@ -16,10 +16,10 @@ import {
   lastSession,
   NO_INTENT,
   openRows,
+  plannedFrom,
   type Row,
   type SetValues,
   setValues,
-  valuesOf,
   withChange,
 } from "../utils/plan";
 import { currentEntry, nextPlanned, setName, summariseSets } from "../utils/session";
@@ -50,7 +50,9 @@ const SessionClock = ({ first, last }: { readonly first: string | null; readonly
 
 /**
  * One workout, open to change whether it is under way or long finished. Under way, finished exercises fold to a line,
- * the one being lifted is a table, the rest wait below, and the dock at the bottom logs each set.
+ * the one being lifted is a table, the rest wait below, and the dock at the bottom logs each set. Finished, an exercise
+ * added or given another set is laid out to log as it would be under way, so one done after the fact is caught up on
+ * in a tap or two.
  */
 export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
   const actions = useWorkoutActions();
@@ -60,6 +62,10 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
   const [chosen, setChosen] = useState<string | null>(null);
   const [selection, setSelection] = useState<{ readonly entryId: string; readonly index: number } | null>(null);
   const [ratingId, setRatingId] = useState<string | null>(null);
+  const [stowed, setStowed] = useState(false);
+  const [title, setTitle] = useState(workout.name ?? "");
+  // The name Claude gives arrives with a sync, likely while the finished workout is open.
+  useEffect(() => setTitle(workout.name ?? ""), [workout.name]);
   const [notes, setNotes] = useState(workout.notes);
   const [bodyweight, setBodyweight] = useState(workout.bodyweightKg === null ? "" : String(workout.bodyweightKg));
 
@@ -75,9 +81,10 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
       template,
       intent,
       history,
-      rows: underWay
-        ? openRows(entry.sets, template, intent, firstSet(entry.exercise))
-        : doneRows(entry.sets, template),
+      rows:
+        underWay || entry.id === chosen
+          ? openRows(entry.sets, template, intent, firstSet(entry.exercise))
+          : doneRows(entry.sets, template),
       before: history.flatMap((session) => session.sets),
       lastBestKg: bestEstimate(template)?.maxKg ?? null,
     };
@@ -86,7 +93,9 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
 
   const sets = workout.entries.flatMap((entry) => entry.sets);
   const loggedTimes = sets.map((set) => set.loggedAt).sort();
-  const current = underWay ? currentEntry(plans, (plan) => plan.rows, chosen) : null;
+  const current = underWay
+    ? currentEntry(plans, (plan) => plan.rows, chosen)
+    : (plans.find((plan) => plan.entry.id === chosen) ?? null);
   const picked = plans.find((plan) => plan.entry.id === selection?.entryId);
   const pickedRow = picked?.rows.find((row) => row.index === selection?.index);
   const next = current === null ? null : nextPlanned(current.rows);
@@ -110,28 +119,36 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
       setIntent(plan.entry.id, withChange(plan.rows, plan.intent, row.index, patch));
     }
   };
-  const log = (plan: Plan, row: Extract<Row, { kind: "planned" }>, figures: Figures) => {
+  type Planned = Extract<Row, { kind: "planned" }>;
+  /** After the last set still to do, the exercise is no longer the one chosen. */
+  const logged = (plan: Plan, row: Planned, all: boolean) => {
+    setSelection(null);
+    if (
+      chosen === plan.entry.id &&
+      (all || !plan.rows.some((other) => other.kind === "planned" && other.index > row.index))
+    ) {
+      setChosen(null);
+    }
+  };
+  const log = (plan: Plan, row: Planned, figures: Figures) => {
     const values = { ...row.values, ...figures };
     // A weight, rep count or time typed in carries down to the sets still to do that matched it.
     const { weightKg, reps, seconds } = values;
     setIntent(plan.entry.id, withChange(plan.rows, plan.intent, row.index, { weightKg, reps, seconds }));
     const id = actions.addSet(plan.entry, values, row.index);
-    // A work set is asked its RPE, unless one was typed in with it.
-    setRatingId(values.kind === "work" && values.rpe === null ? id : null);
-    setSelection(null);
-    if (chosen === plan.entry.id && !plan.rows.some((other) => other.kind === "planned" && other.index > row.index)) {
-      setChosen(null);
-    }
+    // A work set lifted just now is asked its RPE, unless one was typed in with it.
+    setRatingId(underWay && values.kind === "work" && values.rpe === null ? id : null);
+    logged(plan, row, false);
   };
+  const logAll = (plan: Plan, row: Planned, figures: Figures) => {
+    actions.addSets(plan.entry, plannedFrom(plan.rows, plan.intent, row.index, { ...row.values, ...figures }));
+    setRatingId(null);
+    logged(plan, row, true);
+  };
+  /** One more set to do, which the dock then offers to log. */
   const addSet = (plan: Plan) => {
-    if (underWay) {
-      setIntent(plan.entry.id, { ...plan.intent, extra: plan.rows.length - plan.template.length + 1 });
-      choose(plan.entry.id);
-      return;
-    }
-    const last = plan.rows.at(-1);
-    actions.addSet(plan.entry, last === undefined ? firstSet(plan.entry.exercise) : { ...valuesOf(last), rpe: null });
-    setSelection({ entryId: plan.entry.id, index: plan.rows.length });
+    setIntent(plan.entry.id, { ...plan.intent, extra: plan.rows.length - plan.template.length + 1 });
+    choose(plan.entry.id);
   };
   const remove = (plan: Plan, set: LiftSet, index: number) => {
     actions.removeSet(set);
@@ -148,6 +165,8 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
   const select = (plan: Plan, index: number) => {
     const same = selection?.entryId === plan.entry.id && selection.index === index;
     setSelection(same ? null : { entryId: plan.entry.id, index });
+    // A row tapped is a row to work on, so its figures show.
+    setStowed(false);
   };
   const saveBodyweight = () => {
     const typed = bodyweight.trim().replace(",", ".");
@@ -162,6 +181,8 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
   const label = (plan: Plan, row: Row) =>
     `${plan.entry.exercise.name} · ${row.kind === "logged" ? "editing " : ""}${setName(plan.rows, row.index)}`;
   const rowKey = (plan: Plan, row: Row) => `${plan.entry.id}:${row.index}`;
+  const remainingFrom = (plan: Plan, from: Row) =>
+    plan.rows.filter((row) => row.kind === "planned" && row.index >= from.index).length;
   const dock = ((): { readonly key: string; readonly mode: DockMode; readonly exercise: Exercise } | null => {
     if (picked !== undefined && pickedRow !== undefined) {
       const { exercise } = picked.entry;
@@ -188,8 +209,10 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
               kind: "ready",
               label: label(picked, pickedRow),
               values: pickedRow.values,
+              remaining: remainingFrom(picked, pickedRow),
               onKind: (kind) => change(picked, pickedRow, { kind }),
               onLog: (figures) => log(picked, pickedRow, figures),
+              onLogAll: (figures) => logAll(picked, pickedRow, figures),
             },
           };
     }
@@ -235,8 +258,10 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
             kind: "ready",
             label: label(current, next),
             values: next.values,
+            remaining: remainingFrom(current, next),
             onKind: (kind) => change(current, next, { kind }),
             onLog: (figures) => log(current, next, figures),
+            onLogAll: (figures) => logAll(current, next, figures),
           },
         };
   })();
@@ -260,7 +285,7 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
     <>
       <div className={underWay ? "session-bar" : "session-bar finished"}>
         <label className="session-day">
-          <span className="label">{underWay ? "Under way" : "Finished"}</span>
+          <span className="label">{underWay ? "Under way" : (workout.name ?? "Finished")}</span>
           <strong>{formatDay(workout.date)}</strong>
           <input
             type="date"
@@ -392,6 +417,23 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
             </dd>
           </div>
         </dl>
+        <input
+          className="session-name"
+          value={title}
+          placeholder={underWay ? "Named once finished" : "Name"}
+          aria-label="Name of the session"
+          maxLength={80}
+          onChange={(event) => setTitle(event.target.value)}
+          onBlur={() => {
+            const typed = title.trim();
+            // A name can be changed but not cleared: blank leaves it as it was.
+            if (typed === "") {
+              setTitle(workout.name ?? "");
+            } else if (typed !== workout.name) {
+              actions.update(workout, { name: typed });
+            }
+          }}
+        />
         <textarea
           rows={2}
           value={notes}
@@ -413,7 +455,9 @@ export const WorkoutEditor = ({ workout, workouts, exercises }: Props) => {
         </ConfirmButton>
       </section>
 
-      {dock !== null && <Dock key={dock.key} mode={dock.mode} exercise={dock.exercise} />}
+      {dock !== null && (
+        <Dock key={dock.key} mode={dock.mode} exercise={dock.exercise} stowed={stowed} onStow={setStowed} />
+      )}
     </>
   );
 };

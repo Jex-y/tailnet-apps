@@ -4,7 +4,14 @@ import type { LoggedSet } from "../../../../log";
 import { trend } from "../../../../trend";
 import { niceTicks } from "./chart";
 
-const workout = (date: string): Workout => ({ id: date, date, finishedAt: null, notes: "", bodyweightKg: null });
+const workout = (date: string): Workout => ({
+  id: date,
+  date,
+  name: null,
+  finishedAt: null,
+  notes: "",
+  bodyweightKg: null,
+});
 const set = (weightKg: number, reps: number, kind: LiftSet["kind"] = "work"): LoggedSet => ({
   id: `${weightKg}x${reps}`,
   entryId: "entry",

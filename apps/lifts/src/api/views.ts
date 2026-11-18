@@ -47,6 +47,7 @@ export const readWorkouts = async (db: LiftsReader, owner: string): Promise<Work
     .select({
       id: workouts.id,
       date: workouts.date,
+      name: workouts.name,
       finishedAt: workouts.finishedAt,
       notes: workouts.notes,
       bodyweightKg: workouts.bodyweightKg,

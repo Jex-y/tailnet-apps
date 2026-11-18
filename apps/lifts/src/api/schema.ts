@@ -68,6 +68,7 @@ export const workouts = liftsSchema.table(
   {
     ...identity(),
     date: date("date", { mode: "string" }).notNull(),
+    name: text("name"),
     finishedAt: instant("finished_at"),
     notes: text("notes").notNull().default(""),
     bodyweightKg: kilograms("bodyweight_kg"),

@@ -120,7 +120,7 @@ describe("repProfile", () => {
 
 describe("atTodaysLevel", () => {
   const session = (date: string, weightKg: number) => ({
-    workout: { id: date, date, finishedAt: `${date}T19:00:00.000Z`, notes: "", bodyweightKg: null },
+    workout: { id: date, date, name: null, finishedAt: `${date}T19:00:00.000Z`, notes: "", bodyweightKg: null },
     sets: [{ ...point(date, weightKg).set }],
   });
 
